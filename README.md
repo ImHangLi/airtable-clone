@@ -16,16 +16,17 @@ This is a [T3 Stack](https://create.t3.gg/) project bootstrapped with `create-t3
 
 ## Setup & Auth
 
-- [x] Create T3 app
-- [x] Set up Vercel deployment
-- [x] Set up initial Auth via Clerk
-- [x] Scaffold simple UI
+- [X] Create T3 app
+- [X] Set up Vercel deployment
+- [X] Set up initial Auth via Clerk
+- [X] Scaffold simple UI
 
 ## Data Models
 
-- [ ] Config Neon
-- [ ] User can create multiple `Bases`
+- [X] Config Neon
+- [X] User can create multiple `Bases`
 - [ ] `Base` can have multiple `Tables`
+- [ ] `Tables` can have multiple `views`
 - [ ] `Table` has dynamic `Columns` and `Rows`
 - [ ] `Columns` support `Text` and `Number` types
 - [ ] New tables seeded with fake data (via faker.js)
