@@ -10,6 +10,7 @@ import {
   Home,
 } from "lucide-react";
 import { Button } from "~/components/ui/button";
+import { CreateBaseButton } from "./CreateBaseButton";
 
 // Mini sidebar component
 function Mini() {
@@ -40,7 +41,7 @@ function Mini() {
 }
 
 // Full sidebar component
-function Full({ handleCreateBase }: { handleCreateBase: () => void }) {
+function Full() {
   return (
     <nav className="flex h-full min-h-[597px] flex-col justify-between">
       <div>
@@ -89,13 +90,7 @@ function Full({ handleCreateBase }: { handleCreateBase: () => void }) {
           </div>
         </div>
         <div className="px-2 pb-2">
-          <Button
-            className="h-8 w-full cursor-pointer gap-2 bg-[rgb(45,127,249)] text-[13px] font-semibold hover:bg-[rgb(41,122,241)]"
-            onClick={handleCreateBase}
-          >
-            <Plus className="h-4 w-4" />
-            Create
-          </Button>
+          <CreateBaseButton />
         </div>
       </div>
     </nav>
