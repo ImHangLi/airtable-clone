@@ -1,16 +1,23 @@
+"use client";
+
+import { use } from "react";
 import BaseSkeleton from "~/components/base/BaseSkeleton";
-import { type ReactNode } from "react";
 import { getColorFromBaseId } from "~/lib/utils";
 
-export default async function BaseLayout({
+type BaseLayoutProps = {
+  children: React.ReactNode;
+  params: Promise<{
+    baseId: string;
+  }>;
+};
+
+export default function BaseLayout({
   children,
   params,
-}: {
-  children: ReactNode;
-  params: { baseId: string };
-}) {
+}: BaseLayoutProps) {
   // Get the base color from the base id
-  const baseColor = getColorFromBaseId(params.baseId);
+  const { baseId } = use(params);
+  const baseColor = getColorFromBaseId(baseId);
 
   return (
     <div className="relative h-screen w-full">
