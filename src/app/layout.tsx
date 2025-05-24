@@ -5,6 +5,7 @@ import { Inter } from "next/font/google";
 
 import { TRPCReactProvider } from "~/trpc/react";
 import { ClerkProvider, SignedIn, SignedOut, SignIn } from "@clerk/nextjs";
+import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
   title: "Airtable Clone",
@@ -27,6 +28,7 @@ export default function RootLayout({
         <body>
           <SignedIn>
             <TRPCReactProvider>{children}</TRPCReactProvider>
+            <Toaster />
           </SignedIn>
           <SignedOut>
             <div className="flex min-h-screen items-center justify-center">
