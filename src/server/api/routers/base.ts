@@ -2,7 +2,7 @@ import { eq, desc } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { bases, views, tables } from "~/server/db/schema";
+import { bases, views, tables, cells, rows, columns } from "~/server/db/schema";
 
 export const baseRouter = createTRPCRouter({
   // Create a new base
@@ -92,7 +92,12 @@ export const baseRouter = createTRPCRouter({
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       try {
+        // Delete all views associated with the base
+        // Start with view, cells, rows, columns, then tables, then base
         await ctx.db.delete(views).where(eq(views.base_id, input.id));
+        await ctx.db.delete(cells).where(eq(cells.base_id, input.id));
+        await ctx.db.delete(rows).where(eq(rows.base_id, input.id));
+        await ctx.db.delete(columns).where(eq(columns.base_id, input.id));
         await ctx.db.delete(tables).where(eq(tables.base_id, input.id));
         await ctx.db.delete(bases).where(eq(bases.id, input.id));
       } catch (error) {
