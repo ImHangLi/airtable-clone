@@ -5,8 +5,8 @@ import { api } from "~/trpc/server";
 import type { RouterOutputs } from "~/trpc/react";
 
 // Define the expected return types
-type LatestTableViewResult = RouterOutputs["tableView"]["getLatest"] | null;
-type DefaultTableViewResult = RouterOutputs["tableView"]["createDefault"];
+type LatestTableViewResult = RouterOutputs["table"]["getLatest"] | null;
+type DefaultTableViewResult = RouterOutputs["table"]["createDefault"];
 
 /**
  * Get the latest table and view for a base
@@ -16,7 +16,7 @@ export async function getLatestTableView(
 ): Promise<LatestTableViewResult> {
   try {
     // Using the server tRPC API
-    return await api.tableView.getLatest({ baseId });
+    return await api.table.getLatest({ baseId });
   } catch (error) {
     console.error("Error getting latest table and view:", error);
     return null;
@@ -33,7 +33,7 @@ export async function createDefaultTableView(
 ): Promise<DefaultTableViewResult | null> {
   try {
     // Using the server tRPC API
-    const result = await api.tableView.createDefault({
+    const result = await api.table.createDefault({
       baseId,
       tableName,
       viewName,

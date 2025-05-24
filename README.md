@@ -27,24 +27,24 @@ This is a [T3 Stack](https://create.t3.gg/) project bootstrapped with `create-t3
 - [X] User can create multiple `Bases`
 - [ ] `Base` can have multiple `Tables`
 - [ ] `Tables` can have multiple `views`
-- [ ] `Table` has dynamic `Columns` and `Rows`
-- [ ] `Columns` support `Text` and `Number` types
-- [ ] New tables seeded with fake data (via faker.js)
+- [X] `Table` has dynamic `Columns` and `Rows`
+- [X] `Columns` support `Text` and `Number` types
+- [X] New tables seeded with fake data (via faker.js)
 
 ## Table UI
 
-- [ ] Use TanStack Table for displaying rows/columns
-- [ ] Editable cells with smooth tabbing
-- [ ] Add columns dynamically
+- [X] Use TanStack Table for displaying rows/columns
+- [X] Editable cells with smooth tabbing
+- [X] Add columns dynamically
 
 ## Performance
 
-- [ ] Use TanStack Virtualizer for rows
-- [ ] Infinite scroll via tRPC + pagination
-- [ ] Button to add 100k rows
-- [ ] Smooth scroll with 100k+ rows
-- [ ] Loading states while fetching
-- [ ] Performance holds up to 1M+ rows
+- [X] Use TanStack Virtualizer for rows
+- [X] Infinite scroll via tRPC + pagination
+- [X] Button to add 100k rows
+- [X] Smooth scroll with 100k+ rows
+- [X] Loading states while fetching
+- [X] Performance holds up to 1M+ rows (i believe)
 
 ## Search, Filter, Sort (DB-Level)
 

@@ -10,7 +10,7 @@ export default function BaseTopNav({
 }) {
   return (
     <header
-      className="flex h-[56px] items-center px-4 pl-5"
+      className="flex min-h-[56px] items-center px-4 pl-5"
       style={{ backgroundColor: baseColor }}
     >
       <div className="flex h-12 flex-1 items-center justify-between">
