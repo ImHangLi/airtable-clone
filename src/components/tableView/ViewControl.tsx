@@ -6,7 +6,6 @@ import {
   Grid,
   Group,
   Menu,
-  Search,
   Plus,
   Database,
   Loader2,
@@ -29,6 +28,7 @@ import {
   FormMessage,
 } from "~/components/ui/form";
 import type { TableActions, TableData } from "~/hooks/useTableData";
+import { SearchInput } from "./SearchInput";
 
 interface ViewControlProps {
   tableId: string;
@@ -37,6 +37,7 @@ interface ViewControlProps {
   tableData?: TableData;
   isSaving?: boolean;
   setIsSaving?: (saving: boolean) => void;
+  setSearchQuery: (query: string) => void;
 }
 
 // Add column form component
@@ -61,7 +62,7 @@ function AddColumnForm({
     if (isOpen) {
       form.reset({ name: "", type: "text" });
     }
-  }, [isOpen, form]);
+  }, [isOpen, form.reset]);
 
   const onSubmit = useCallback(
     async (data: { name: string; type: "text" | "number" }) => {
@@ -83,7 +84,7 @@ function AddColumnForm({
   const handleCancel = useCallback(() => {
     form.reset({ name: "", type: "text" });
     setIsOpen(false);
-  }, [form, setIsOpen]);
+  }, [form.reset, setIsOpen]);
 
   const fieldValue = form.watch("name");
   const isFieldEmpty = !fieldValue?.trim();
@@ -163,6 +164,7 @@ export default function ViewControl({
   tableData,
   isSaving = false,
   setIsSaving,
+  setSearchQuery,
 }: ViewControlProps) {
   const [isAddColumnOpen, setIsAddColumnOpen] = useState(false);
   const [isAddingManyRows, setIsAddingManyRows] = useState(false);
@@ -351,21 +353,18 @@ export default function ViewControl({
           </div>
         )}
 
-        {/* Loading indicator */}
-        {(tableData?.isFetching ?? isAddingManyRows) && (
+        {/* Loading indicator - show for bulk operations and infinite scrolling */}
+        {(isAddingManyRows || tableData?.isFetchingNextPage) && (
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <Loader2 className="h-4 w-4 animate-spin" />
             <span>Loading...</span>
           </div>
         )}
 
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 gap-1.5 rounded px-2 text-sm font-normal text-gray-700 hover:bg-gray-100"
-        >
-          <Search className="h-4 w-4" />
-        </Button>
+        <SearchInput
+          onChange={setSearchQuery}
+          disabled={isSaving}
+        />
       </div>
     </div>
   );

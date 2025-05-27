@@ -2,8 +2,8 @@ import { useMemo } from "react";
 import { api } from "~/trpc/react";
 import { toast } from "sonner";
 import type { Column } from "~/server/db/schema";
+import { useDebounce } from "./useDebounce";
 
-// Clean, focused types for table data
 export interface TableColumn {
   id: string;
   name: string;
@@ -44,6 +44,7 @@ export interface TableActions {
 interface UseTableDataProps {
   tableId: string;
   baseId: string;
+  search?: string; // Add search parameter
 }
 
 interface UseTableDataReturn {
@@ -56,25 +57,54 @@ interface UseTableDataReturn {
 export function useTableData({
   tableId,
   baseId,
+  search,
 }: UseTableDataProps): UseTableDataReturn {
   const utils = api.useUtils();
 
-  // Main infinite table data query
+  const debouncedSearch = useDebounce(search?.trim() ?? "", 500);
+  const hasSearch = Boolean(debouncedSearch);
+
+  // Normal table data query
   const infiniteTableQuery = api.data.getInfiniteTableData.useInfiniteQuery(
     {
       tableId,
       limit: 100,
     },
     {
-      enabled: !!tableId,
+      enabled: !!tableId && !hasSearch, // Only enabled when not searching
       getNextPageParam: (lastPage) => lastPage.nextCursor,
       retry: (failureCount) => failureCount < 2,
+      // Keep previous data to avoid loading states during transitions
+      // Instant background updates for immediate transitions
+      staleTime: 0,
+      refetchOnWindowFocus: false,
+    },
+  );
+
+  // Search query
+  const searchQuery = api.data.searchTableData.useInfiniteQuery(
+    {
+      tableId,
+      search: debouncedSearch,
+      limit: 30,
+    },
+    {
+      enabled: !!tableId && hasSearch, // Only enabled when searching
+      getNextPageParam: (lastPage) => lastPage.nextCursor,
+      retry: (failureCount) => failureCount < 2,
+      // Keep previous data to avoid loading states during transitions
+      // Instant background updates for immediate transitions
+      staleTime: 0,
+      refetchOnWindowFocus: false,
     },
   );
 
   const createRowMutation = api.row.createRow.useMutation({
     onMutate: async ({ tableId }) => {
-      await utils.data.getInfiniteTableData.cancel({ tableId, limit: 100 });
+      await utils.data.getInfiniteTableData.cancel({
+        tableId,
+        limit: 100,
+      });
 
       const previousData = utils.data.getInfiniteTableData.getInfiniteData({
         tableId,
@@ -127,7 +157,10 @@ export function useTableData({
       toast.error(`Failed to create row: ${error.message}`);
     },
     onSettled: () => {
-      void utils.data.getInfiniteTableData.invalidate({ tableId, limit: 100 });
+      void utils.data.getInfiniteTableData.invalidate({
+        tableId,
+        limit: 100,
+      });
     },
   });
 
@@ -285,7 +318,7 @@ export function useTableData({
             ),
           },
           rows: page.rows.map((row) => {
-            const { [columnId]: deletedCell, ...remainingCells } = row.cells;
+            const { ...remainingCells } = row.cells;
             return {
               ...row,
               cells: remainingCells,
@@ -388,11 +421,13 @@ export function useTableData({
 
   // Transform infinite data to our clean format
   const tableData = useMemo((): TableData | null => {
-    if (!infiniteTableQuery.data || infiniteTableQuery.data.pages.length === 0)
-      return null;
+    // Use search query if searching, otherwise use normal query
+    const activeQuery = hasSearch ? searchQuery : infiniteTableQuery;
 
-    const firstPage = infiniteTableQuery.data.pages[0]!;
-    const allRows = infiniteTableQuery.data.pages.flatMap((page) => page.rows);
+    if (!activeQuery.data || activeQuery.data.pages.length === 0) return null;
+
+    const firstPage = activeQuery.data.pages[0]!;
+    const allRows = activeQuery.data.pages.flatMap((page) => page.rows);
     const totalDBRowCount = firstPage.totalRowCount ?? 0;
     const totalFetched = allRows.length;
 
@@ -406,14 +441,14 @@ export function useTableData({
       rows: allRows,
       totalRows: totalFetched,
       totalDBRowCount,
-      hasNextPage: infiniteTableQuery.hasNextPage,
+      hasNextPage: activeQuery.hasNextPage,
       fetchNextPage: () => {
-        void infiniteTableQuery.fetchNextPage();
+        void activeQuery.fetchNextPage();
       },
-      isFetching: infiniteTableQuery.isFetching,
-      isFetchingNextPage: infiniteTableQuery.isFetchingNextPage,
+      isFetching: activeQuery.isFetching,
+      isFetchingNextPage: activeQuery.isFetchingNextPage,
     };
-  }, [infiniteTableQuery]);
+  }, [infiniteTableQuery, searchQuery, hasSearch]);
 
   const tableActions = useMemo(
     (): TableActions => ({
@@ -519,10 +554,11 @@ export function useTableData({
     ],
   );
 
-  // Calculate loading state
+  // Calculate loading state - exclude initial query loading for immediate transitions
   const loading = useMemo(() => {
+    const activeQuery = hasSearch ? searchQuery : infiniteTableQuery;
     return (
-      infiniteTableQuery.isPending ||
+      (activeQuery.isPending && !activeQuery.data) ||
       createRowMutation.isPending ||
       updateCellMutation.isPending ||
       updateColumnMutation.isPending ||
@@ -531,7 +567,9 @@ export function useTableData({
       addColumnMutation.isPending
     );
   }, [
-    infiniteTableQuery.isPending,
+    hasSearch,
+    searchQuery,
+    infiniteTableQuery,
     createRowMutation.isPending,
     updateCellMutation.isPending,
     updateColumnMutation.isPending,
@@ -540,13 +578,14 @@ export function useTableData({
     addColumnMutation.isPending,
   ]);
 
-  // Get error message
+  // Error handling
   const error = useMemo(() => {
-    if (infiniteTableQuery.error) {
-      return infiniteTableQuery.error.message;
+    const activeQuery = hasSearch ? searchQuery : infiniteTableQuery;
+    if (activeQuery.error) {
+      return activeQuery.error.message;
     }
     return null;
-  }, [infiniteTableQuery.error]);
+  }, [hasSearch, searchQuery, infiniteTableQuery]);
 
   return {
     loading,
