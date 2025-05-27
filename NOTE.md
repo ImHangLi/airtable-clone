@@ -27,5 +27,12 @@ Background:
 - Each table corresponds to a different view, so {tableId} and {viewId} both updates when navigating to different table.
 
 
+## Database level search
 
+Search flow: User clicks search → API call → Database → Results → Highlighting
+
+Search type:
+- Header
+- Row number
+- Cell content
 

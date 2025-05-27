@@ -25,8 +25,6 @@ This is a [T3 Stack](https://create.t3.gg/) project bootstrapped with `create-t3
 
 - [X] Config Neon
 - [X] User can create multiple `Bases`
-- [ ] `Base` can have multiple `Tables`
-- [ ] `Tables` can have multiple `views`
 - [X] `Table` has dynamic `Columns` and `Rows`
 - [X] `Columns` support `Text` and `Number` types
 - [X] New tables seeded with fake data (via faker.js)
@@ -48,7 +46,7 @@ This is a [T3 Stack](https://create.t3.gg/) project bootstrapped with `create-t3
 
 ## Search, Filter, Sort (DB-Level)
 
-- [ ] Search all cells
+- [X] Search all cells
 - [ ] Filter:
   - [ ] Text: contains, not contains, is empty, is not empty, equals
   - [ ] Number: >, <, =
@@ -60,6 +58,8 @@ This is a [T3 Stack](https://create.t3.gg/) project bootstrapped with `create-t3
 ## Views
 
 - [ ] Create & save table views
+- [ ] Multiple tables per base
+- [ ] Multiple views per table
 - [ ] Views store filters, sorts, hidden columns
 - [ ] Show/hide and search columns
 
