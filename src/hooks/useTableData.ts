@@ -542,8 +542,15 @@ export function useTableData({
       },
     }),
     [
+      createRowMutation,
+      updateCellMutation,
+      updateColumnMutation,
+      deleteRowMutation,
+      infiniteTableQuery,
       tableId,
       baseId,
+      addColumnMutation,
+      deleteColumnMutation,
     ],
   );
 

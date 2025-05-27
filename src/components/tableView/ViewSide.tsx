@@ -12,6 +12,7 @@ export default function ViewSide() {
             <Input
               placeholder="Find a view"
               className="h-7 w-full border-none bg-white pl-7 text-[13px] shadow-none placeholder:text-gray-500"
+              id="view-search-input"
             />
           </div>
         </div>

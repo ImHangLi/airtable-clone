@@ -76,8 +76,23 @@ export default function TableView({
     onSavingStateChange?.(isSaving);
   }, [isSaving, onSavingStateChange]);
 
-  // Extract individual functions for cleaner code
-  const { updateCell, deleteRow, updateColumn, deleteColumn } = tableActions;
+  // Extract individual functions to prevent dependency chain issues
+  const updateCell = useMemo(
+    () => tableActions.updateCell,
+    [tableActions.updateCell],
+  );
+  const deleteRow = useMemo(
+    () => tableActions.deleteRow,
+    [tableActions.deleteRow],
+  );
+  const updateColumn = useMemo(
+    () => tableActions.updateColumn,
+    [tableActions.updateColumn],
+  );
+  const deleteColumn = useMemo(
+    () => tableActions.deleteColumn,
+    [tableActions.deleteColumn],
+  );
 
   // Memoized update function for table meta
   const updateData = useCallback(
@@ -106,14 +121,44 @@ export default function TableView({
     [],
   );
 
+  // Handle delete row from context menu
+  const handleDeleteRow = useCallback(
+    async (rowId: string) => {
+      // Immediately close the menu and set saving state
+      setContextMenu((prev) => ({
+        ...prev,
+        isOpen: false,
+        rowId: null,
+      }));
+      setIsSaving(true);
+
+      try {
+        const success = await deleteRow(rowId);
+        if (success) {
+          toast.success("Record deleted successfully");
+        } else {
+          toast.error("Failed to delete record");
+        }
+      } catch (error) {
+        console.error("Error deleting row:", error);
+        toast.error("Failed to delete record");
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [deleteRow],
+  );
+
   // Handle context menu close
   const handleContextMenuClose = useCallback(() => {
-    setContextMenu((prev) => ({
-      ...prev,
-      isOpen: false,
-      rowId: null,
-    }));
-  }, []);
+    if (!isSaving) {
+      setContextMenu((prev) => ({
+        ...prev,
+        isOpen: false,
+        rowId: null,
+      }));
+    }
+  }, [isSaving]);
 
   // Handle column header click
   const handleColumnHeaderRightClick = useCallback(
@@ -141,44 +186,12 @@ export default function TableView({
     }));
   }, []);
 
-  // Handle delete row from context menu
-  const handleDeleteRow = useCallback(
-    async (rowId: string) => {
-      setContextMenu((prev) => ({
-        ...prev,
-        isOpen: false,
-        rowId: null,
-      }));
-
-      setIsSaving(true);
-      try {
-        const success = await deleteRow(rowId);
-        if (success) {
-          toast.success("Record deleted successfully");
-        } else {
-          toast.error("Failed to delete record");
-        }
-      } catch (error) {
-        console.error("Error deleting row:", error);
-        toast.error("Failed to delete record");
-      } finally {
-        setIsSaving(false);
-      }
-    },
-    [deleteRow],
-  );
-
   // Handle column update from editor
   const handleColumnUpdate = useCallback(
     async (columnName: string) => {
       if (!columnEditor.columnId) return;
 
-      setColumnEditor((prev) => ({
-        ...prev,
-        isOpen: false,
-        columnId: null,
-        columnName: null,
-      }));
+      handleColumnEditorClose();
 
       setIsSaving(true);
       try {
@@ -191,18 +204,13 @@ export default function TableView({
         setIsSaving(false);
       }
     },
-    [columnEditor.columnId, updateColumn],
+    [columnEditor.columnId, updateColumn, handleColumnEditorClose],
   );
 
   // Handle column delete from editor
   const handleColumnDelete = useCallback(
     async (columnId: string) => {
-      setColumnEditor((prev) => ({
-        ...prev,
-        isOpen: false,
-        columnId: null,
-        columnName: null,
-      }));
+      handleColumnEditorClose();
 
       setIsSaving(true);
       try {
@@ -215,7 +223,7 @@ export default function TableView({
         setIsSaving(false);
       }
     },
-    [deleteColumn],
+    [deleteColumn, handleColumnEditorClose],
   );
 
   // Memoized cell renderers
@@ -305,12 +313,7 @@ export default function TableView({
         }
       }
     },
-    [
-      tableData.isFetching,
-      tableData.totalRows,
-      tableData.totalDBRowCount,
-      tableData.fetchNextPage,
-    ],
+    [tableData],
   );
 
   // Check on mount and after data changes to see if we need to fetch more
@@ -450,14 +453,15 @@ export default function TableView({
       </div>
 
       {/* Simple Context Menu */}
-      <SimpleContextMenu
-        isOpen={contextMenu.isOpen}
-        position={contextMenu.position}
-        onCloseAction={handleContextMenuClose}
-        onDeleteAction={() =>
-          contextMenu.rowId && handleDeleteRow(contextMenu.rowId)
-        }
-      />
+      {contextMenu.isOpen && contextMenu.rowId && (
+        <SimpleContextMenu
+          isOpen={contextMenu.isOpen}
+          position={contextMenu.position}
+          rowId={contextMenu.rowId}
+          onCloseAction={handleContextMenuClose}
+          onDeleteAction={handleDeleteRow}
+        />
+      )}
 
       {/* Column Header Editor */}
       {columnEditor.isOpen &&

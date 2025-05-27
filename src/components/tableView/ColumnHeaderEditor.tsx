@@ -41,7 +41,7 @@ export function ColumnHeaderEditor({
   // Reset form when component mounts
   useEffect(() => {
     form.reset({ name: initialName });
-  }, [initialName, form.reset]);
+  }, [form, initialName]);
 
   // Handle clicks outside and escape key
   useEffect(() => {
@@ -92,7 +92,7 @@ export function ColumnHeaderEditor({
   const handleCancel = useCallback(() => {
     form.reset({ name: initialName });
     setIsEditing(false);
-  }, [form.reset, initialName]);
+  }, [form, initialName]);
 
   const handleEdit = useCallback(() => {
     setIsEditing(true);

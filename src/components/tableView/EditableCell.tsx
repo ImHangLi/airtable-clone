@@ -105,6 +105,7 @@ export function EditableCell({ props, columnType }: EditableCellProps) {
       onFocus={handleFocus}
       onBlur={handleBlur}
       onKeyDown={handleKeyDown}
+      id={`editable-cell-${row.original.id}-${column.id}`}
     />
   );
 }

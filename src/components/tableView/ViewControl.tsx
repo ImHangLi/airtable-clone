@@ -62,7 +62,7 @@ function AddColumnForm({
     if (isOpen) {
       form.reset({ name: "", type: "text" });
     }
-  }, [isOpen, form.reset]);
+  }, [form, isOpen]);
 
   const onSubmit = useCallback(
     async (data: { name: string; type: "text" | "number" }) => {
@@ -84,7 +84,7 @@ function AddColumnForm({
   const handleCancel = useCallback(() => {
     form.reset({ name: "", type: "text" });
     setIsOpen(false);
-  }, [form.reset, setIsOpen]);
+  }, [form, setIsOpen]);
 
   const fieldValue = form.watch("name");
   const isFieldEmpty = !fieldValue?.trim();
@@ -361,10 +361,7 @@ export default function ViewControl({
           </div>
         )}
 
-        <SearchInput
-          onChange={setSearchQuery}
-          disabled={isSaving}
-        />
+        <SearchInput onChange={setSearchQuery} disabled={isSaving} />
       </div>
     </div>
   );
