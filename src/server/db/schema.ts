@@ -14,6 +14,7 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 /**
  * Multi-project schema setup for Drizzle ORM
@@ -96,6 +97,8 @@ export const cells = createTable(
       .notNull(),
     value_text: text("value_text"),
     value_number: doublePrecision("value_number"),
+    // Full-Text Search vector for text values
+    search_vector: text("search_vector").$type<string>(),
   },
   (t) => [
     primaryKey({ columns: [t.row_id, t.column_id] }),
@@ -103,6 +106,15 @@ export const cells = createTable(
     index("idx_cells_text_value").on(t.column_id, t.value_text),
     index("idx_cells_number_value").on(t.column_id, t.value_number),
     index("idx_cells_base_id").on(t.base_id),
+    // B-tree indexes for case-insensitive pattern matching (ILIKE)
+    index("idx_cells_text_lower").using(
+      "btree",
+      sql`lower(${t.value_text}) text_pattern_ops`,
+    ),
+    index("idx_cells_number_text_lower").using(
+      "btree",
+      sql`lower(CAST(${t.value_number} AS TEXT)) text_pattern_ops`,
+    ),
   ],
 );
 

@@ -1,10 +1,10 @@
 import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
 import { baseRouter } from "./routers/base";
 import { tableRouter } from "./routers/table";
-import { dataRouter } from "./routers/data";
-import { cellRouter } from "./routers/cell";
-import { columnRouter } from "./routers/column";
 import { rowRouter } from "./routers/row";
+import { columnRouter } from "./routers/column";
+import { cellRouter } from "./routers/cell";
+import { dataRouter } from "./routers/data";
 
 /**
  * This is the primary router for your server.
@@ -14,10 +14,10 @@ import { rowRouter } from "./routers/row";
 export const appRouter = createTRPCRouter({
   base: baseRouter,
   table: tableRouter,
-  data: dataRouter,
-  cell: cellRouter,
-  column: columnRouter,
   row: rowRouter,
+  column: columnRouter,
+  cell: cellRouter,
+  data: dataRouter,
 });
 
 // export type definition of API
@@ -27,7 +27,7 @@ export type AppRouter = typeof appRouter;
  * Create a server-side caller for the tRPC API.
  * @example
  * const trpc = createCaller(createContext);
- * const res = await trpc.post.all();
+ * const result = await trpc.post.all();
  *       ^? Post[]
  */
 export const createCaller = createCallerFactory(appRouter);
