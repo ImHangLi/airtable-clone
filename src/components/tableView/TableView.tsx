@@ -76,23 +76,8 @@ export default function TableView({
     onSavingStateChange?.(isSaving);
   }, [isSaving, onSavingStateChange]);
 
-  // Extract individual functions to prevent dependency chain issues
-  const updateCell = useMemo(
-    () => tableActions.updateCell,
-    [tableActions.updateCell],
-  );
-  const deleteRow = useMemo(
-    () => tableActions.deleteRow,
-    [tableActions.deleteRow],
-  );
-  const updateColumn = useMemo(
-    () => tableActions.updateColumn,
-    [tableActions.updateColumn],
-  );
-  const deleteColumn = useMemo(
-    () => tableActions.deleteColumn,
-    [tableActions.deleteColumn],
-  );
+  // Extract individual functions for cleaner code
+  const { updateCell, deleteRow, updateColumn, deleteColumn } = tableActions;
 
   // Memoized update function for table meta
   const updateData = useCallback(
@@ -320,7 +305,12 @@ export default function TableView({
         }
       }
     },
-    [tableData],
+    [
+      tableData.isFetching,
+      tableData.totalRows,
+      tableData.totalDBRowCount,
+      tableData.fetchNextPage,
+    ],
   );
 
   // Check on mount and after data changes to see if we need to fetch more

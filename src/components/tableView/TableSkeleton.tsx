@@ -23,7 +23,7 @@ export function TableSkeleton() {
   });
 
   // Mock 4 columns (1 row number + 3 data columns)
-  const columnCount = 4;
+  const columnCount = 3;
   const totalColumnWidth =
     CELL_CONFIG.rowNumberWidth + (columnCount - 1) * CELL_CONFIG.defaultWidth;
 

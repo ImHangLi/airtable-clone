@@ -44,7 +44,6 @@ export const tableRouter = createTRPCRouter({
         const defaultColumns = [
           { name: "Name", type: "text" as ColumnType },
           { name: "Age", type: "number" as ColumnType },
-          { name: "Email", type: "text" as ColumnType },
         ];
 
         const columnIds = defaultColumns.map(() => randomUUID());
@@ -85,7 +84,7 @@ export const tableRouter = createTRPCRouter({
         }
 
         // Create sample data directly in procedure
-        const [nameColumnId, ageColumnId, emailColumnId] = columnIds;
+        const [nameColumnId, ageColumnId] = columnIds;
         const rowCount = 20;
         const rowData = [];
         const cellData = [];
@@ -100,7 +99,6 @@ export const tableRouter = createTRPCRouter({
 
           const name = faker.person.fullName();
           const age = faker.number.int({ min: 18, max: 80 });
-          const email = faker.internet.email();
 
           cellData.push(
             {
@@ -116,13 +114,6 @@ export const tableRouter = createTRPCRouter({
               base_id: input.baseId,
               value_text: null,
               value_number: age,
-            },
-            {
-              row_id: rowId,
-              column_id: emailColumnId!,
-              base_id: input.baseId,
-              value_text: email,
-              value_number: null,
             },
           );
         }
