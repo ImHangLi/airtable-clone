@@ -7,6 +7,7 @@ import TableNav from "~/components/tableView/TableNav";
 import ViewControl from "~/components/tableView/ViewControl";
 import ViewSide from "~/components/tableView/ViewSide";
 import TableView from "~/components/tableView/TableView";
+import { TableSkeleton } from "~/components/tableView/TableSkeleton";
 import { useTableData } from "~/hooks/useTableData";
 import { getColorFromBaseId, getDarkerColorFromBaseId } from "~/lib/utils";
 import { api } from "~/trpc/react";
@@ -14,15 +15,6 @@ import { api } from "~/trpc/react";
 // Component props
 interface TableViewPageClientProps {
   params: Promise<{ baseId: string; tableId: string; viewId: string }>;
-}
-
-// Loading component
-function LoadingState() {
-  return (
-    <div className="flex h-full items-center justify-center">
-      <div className="text-lg">Loading table data...</div>
-    </div>
-  );
 }
 
 // Error component
@@ -39,6 +31,7 @@ export default function TableViewPageClient({
 }: TableViewPageClientProps) {
   const { baseId, tableId } = use(params);
   const [isSaving, setIsSaving] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Get base information using tRPC
   const { data: baseNameAndColor, error: baseError } =
@@ -50,6 +43,7 @@ export default function TableViewPageClient({
   const { loading, error, tableData, tableActions } = useTableData({
     tableId,
     baseId,
+    search: searchQuery,
   });
 
   // Derived values for UI
@@ -83,6 +77,7 @@ export default function TableViewPageClient({
         tableData={tableData ?? undefined}
         isSaving={isSaving}
         setIsSaving={setIsSaving}
+        setSearchQuery={setSearchQuery}
       />
 
       {/* Main Content Area */}
@@ -94,8 +89,6 @@ export default function TableViewPageClient({
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {error ? (
             <ErrorState message={error} />
-          ) : loading && !tableData ? (
-            <LoadingState />
           ) : tableData ? (
             <TableView
               tableData={tableData}
@@ -103,7 +96,7 @@ export default function TableViewPageClient({
               onSavingStateChange={setIsSaving}
             />
           ) : (
-            <ErrorState message="No table data available" />
+            <TableSkeleton />
           )}
         </div>
       </div>

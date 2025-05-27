@@ -76,17 +76,35 @@ export default function TableView({
     onSavingStateChange?.(isSaving);
   }, [isSaving, onSavingStateChange]);
 
+  // Extract individual functions to prevent dependency chain issues
+  const updateCell = useMemo(
+    () => tableActions.updateCell,
+    [tableActions.updateCell],
+  );
+  const deleteRow = useMemo(
+    () => tableActions.deleteRow,
+    [tableActions.deleteRow],
+  );
+  const updateColumn = useMemo(
+    () => tableActions.updateColumn,
+    [tableActions.updateColumn],
+  );
+  const deleteColumn = useMemo(
+    () => tableActions.deleteColumn,
+    [tableActions.deleteColumn],
+  );
+
   // Memoized update function for table meta
   const updateData = useCallback(
     async (rowId: string, columnId: string, value: string | number) => {
       setIsSaving(true);
       try {
-        await tableActions.updateCell(rowId, columnId, value);
+        await updateCell(rowId, columnId, value);
       } finally {
         setIsSaving(false);
       }
     },
-    [tableActions],
+    [updateCell],
   );
 
   // Handle right-click on row
@@ -149,7 +167,7 @@ export default function TableView({
 
       setIsSaving(true);
       try {
-        const success = await tableActions.deleteRow(rowId);
+        const success = await deleteRow(rowId);
         if (success) {
           toast.success("Record deleted successfully");
         } else {
@@ -162,7 +180,7 @@ export default function TableView({
         setIsSaving(false);
       }
     },
-    [tableActions],
+    [deleteRow],
   );
 
   // Handle column update from editor
@@ -179,7 +197,7 @@ export default function TableView({
 
       setIsSaving(true);
       try {
-        await tableActions.updateColumn(columnEditor.columnId, columnName);
+        await updateColumn(columnEditor.columnId, columnName);
         toast.success("Column updated successfully");
       } catch (error) {
         console.error("Error updating column:", error);
@@ -188,7 +206,7 @@ export default function TableView({
         setIsSaving(false);
       }
     },
-    [columnEditor.columnId, tableActions],
+    [columnEditor.columnId, updateColumn],
   );
 
   // Handle column delete from editor
@@ -203,7 +221,7 @@ export default function TableView({
 
       setIsSaving(true);
       try {
-        await tableActions.deleteColumn(columnId);
+        await deleteColumn(columnId);
         toast.success("Column deleted successfully");
       } catch (error) {
         console.error("Error deleting column:", error);
@@ -212,7 +230,7 @@ export default function TableView({
         setIsSaving(false);
       }
     },
-    [tableActions],
+    [deleteColumn],
   );
 
   // Memoized cell renderers
@@ -247,6 +265,7 @@ export default function TableView({
         header: "",
         cell: ({ row }) => <RowNumberCell rowIndex={row.index} />,
         size: CELL_CONFIG.rowNumberWidth,
+        enableGlobalFilter: false,
       },
       // Data columns
       ...tableData.columns.map((column: TableColumn) => ({
@@ -267,7 +286,7 @@ export default function TableView({
     numberCellRenderer,
   ]);
 
-  // TanStack Table instance
+  // TanStack Table instance (no client-side filtering)
   const table = useReactTable({
     data: tableData.rows,
     columns: tableColumns,
@@ -339,7 +358,7 @@ export default function TableView({
         >
           {/* Header */}
           <div
-            className="sticky top-0 bg-gray-100 shadow-sm z-10"
+            className="sticky top-0 z-10 bg-gray-100 shadow-sm"
             style={{
               borderBottom: "1px solid #cccccc",
             }}
@@ -405,6 +424,7 @@ export default function TableView({
                         <div
                           key={cell.id}
                           className="relative flex items-center"
+                          data-cell-id={`${row.original.id}-${cell.column.id}`}
                           style={{
                             ...baseCellStyle,
                             ...getCellWidth(cell.column.id === "rowNumber"),
@@ -415,7 +435,9 @@ export default function TableView({
                             borderBottom: isEditing
                               ? "1px solid #186ce4"
                               : "none",
-                            borderLeft: isEditing ? "1px solid #186ce4" : "none",
+                            borderLeft: isEditing
+                              ? "1px solid #186ce4"
+                              : "none",
                             zIndex: isEditing ? 10 : "auto",
                             boxShadow: isEditing
                               ? "0 0 0 1px #186ce4 inset"
