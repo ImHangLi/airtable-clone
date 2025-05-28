@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useDebounce } from "./useDebounce";
 
 interface UseTableSearchOptions {
@@ -23,12 +23,18 @@ export function useTableSearch({
   const [searchValue, setSearchValue] = useState("");
   const debouncedSearchValue = useDebounce(searchValue, 500);
 
+  // Store onSearch in a ref to avoid dependency issues
+  const onSearchRef = useRef(onSearch);
+  useEffect(() => {
+    onSearchRef.current = onSearch;
+  }, [onSearch]);
+
   // Call the onSearch callback when debounced value changes
   useEffect(() => {
-    if (onSearch) {
-      onSearch(debouncedSearchValue);
+    if (onSearchRef.current) {
+      onSearchRef.current(debouncedSearchValue);
     }
-  }, [debouncedSearchValue, onSearch]);
+  }, [debouncedSearchValue]);
 
   // Clear search function
   const clearSearch = useCallback(() => {
