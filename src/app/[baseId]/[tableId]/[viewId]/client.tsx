@@ -30,7 +30,9 @@ export default function TableViewPageClient({
   params,
 }: TableViewPageClientProps) {
   const { baseId, tableId } = use(params);
-  const [isSaving, setIsSaving] = useState(false);
+  const [tableSavingStatus, setTableSavingStatus] = useState<string | null>(
+    null,
+  );
   const [searchQuery, setSearchQuery] = useState("");
 
   // State for sorting functionality
@@ -53,12 +55,20 @@ export default function TableViewPageClient({
     });
 
   // Get table data using our custom hook
-  const { loading, error, tableData, tableActions } = useTableData({
+  const {
+    loading: hookLoadingStatus,
+    error,
+    tableData,
+    tableActions,
+  } = useTableData({
     tableId,
     baseId,
     search: searchQuery,
     sorting,
   });
+
+  // Combine loading states - prioritize table operations over hook operations
+  const currentLoadingStatus = tableSavingStatus ?? hookLoadingStatus;
 
   // Derived values for UI
   const baseName = baseNameAndColor?.name;
@@ -66,7 +76,7 @@ export default function TableViewPageClient({
   const darkerColor = getDarkerColorFromBaseId(baseId);
 
   // Show error toast for table data errors (only once)
-  if (error && !loading) {
+  if (error && !hookLoadingStatus) {
     toast.error(`Failed to load table: ${error}`);
   }
 
@@ -89,8 +99,7 @@ export default function TableViewPageClient({
         baseId={baseId}
         tableActions={tableActions}
         tableData={tableData ?? undefined}
-        isSaving={isSaving}
-        setIsSaving={setIsSaving}
+        loadingStatus={currentLoadingStatus}
         setSearchQuery={handleSearchQueryChange}
         sorting={sorting}
         onSortingChange={handleSortingChange}
@@ -109,7 +118,7 @@ export default function TableViewPageClient({
             <TableView
               tableData={tableData}
               tableActions={tableActions}
-              onSavingStateChange={setIsSaving}
+              onSavingStateChange={setTableSavingStatus}
             />
           ) : (
             <TableSkeleton />

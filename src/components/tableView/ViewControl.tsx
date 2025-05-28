@@ -35,8 +35,7 @@ interface ViewControlProps {
   baseId: string;
   tableActions: TableActions;
   tableData?: TableData;
-  isSaving?: boolean;
-  setIsSaving?: (saving: boolean) => void;
+  loadingStatus?: string | null;
   setSearchQuery: (query: string) => void;
   sorting: SortConfig[];
   onSortingChange: (sorting: SortConfig[]) => void;
@@ -164,8 +163,7 @@ export default function ViewControl({
   baseId,
   tableActions,
   tableData,
-  isSaving = false,
-  setIsSaving,
+  loadingStatus = null,
   setSearchQuery,
   sorting,
   onSortingChange,
@@ -193,30 +191,24 @@ export default function ViewControl({
   // Handle add single row
   const handleAddRow = useCallback(async () => {
     try {
-      setIsSaving?.(true);
       await tableActions.addRow();
     } catch (error) {
       console.error("Failed to add row:", error);
       toast.error("Failed to add row");
-    } finally {
-      setIsSaving?.(false);
     }
-  }, [tableActions, setIsSaving]);
+  }, [tableActions]);
 
   // Handle add column
   const handleAddColumn = useCallback(
     async (name: string, type: "text" | "number") => {
       try {
-        setIsSaving?.(true);
         await tableActions.addColumn(name, type);
       } catch (error) {
         console.error("Failed to add column:", error);
         toast.error("Failed to add column");
-      } finally {
-        setIsSaving?.(false);
       }
     },
-    [tableActions, setIsSaving],
+    [tableActions],
   );
 
   // Handle add 100k rows
@@ -298,7 +290,7 @@ export default function ViewControl({
             size="sm"
             className="h-8 gap-1.5 rounded px-2 text-sm font-normal text-gray-700 hover:bg-gray-100"
             onClick={handleAddRow}
-            disabled={isSaving}
+            disabled={!!loadingStatus}
             title="Adds a row to the table"
           >
             <Plus className="h-4 w-4" />
@@ -315,6 +307,8 @@ export default function ViewControl({
                 variant="ghost"
                 size="sm"
                 className="h-8 gap-1.5 rounded p-3 text-sm font-normal text-gray-700 hover:bg-gray-100"
+                disabled={!!loadingStatus}
+                title="Adds a column to the table"
               >
                 <Plus className="h-4 w-4" />
                 <p className="hidden text-[13px] md:block">Add column</p>
@@ -331,59 +325,59 @@ export default function ViewControl({
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 gap-1.5 rounded px-2 text-sm font-normal text-gray-700 hover:bg-gray-100 disabled:opacity-75"
+            className="h-8 gap-1.5 rounded px-2 text-sm font-normal text-gray-700 hover:bg-gray-100"
             onClick={handleAddManyRows}
-            disabled={isAddingManyRows}
-            title="Adds 100k rows magic button"
+            disabled={!!loadingStatus || isAddingManyRows}
+            title="Adds 100k rows to the table for testing"
           >
-            {isAddingManyRows ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Database className="h-4 w-4" />
-            )}
+            <Database className="h-4 w-4" />
             <p className="hidden text-[13px] md:block">Add 100k rows</p>
           </Button>
         </div>
 
+        {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Saving indicator */}
-        {isSaving && (
+        {/* Loading indicators with priority order */}
+        {/* Show specific operation status (highest priority) */}
+        {loadingStatus && (
           <div className="flex items-center gap-2 text-sm text-gray-600">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Saving...</span>
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span className="text-[13px]">{loadingStatus}</span>
           </div>
         )}
 
-        {!isSaving && isAddingManyRows && (
+        {/* Show adding many rows status */}
+        {!loadingStatus && isAddingManyRows && (
           <div className="flex items-center gap-2 text-sm text-gray-600">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Adding 100k rows...</span>
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span className="text-[13px]">Adding 100k rows...</span>
           </div>
         )}
 
-        {!isSaving &&
+        {/* Show general loading (medium priority) */}
+        {!loadingStatus &&
           !isAddingManyRows &&
           tableData?.isFetching &&
           !tableData?.isFetchingNextPage && (
             <div className="flex items-center gap-2 text-sm text-gray-600">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Loading...</span>
+              <Loader2 className="h-3 w-3 animate-spin" />
+              <span className="text-[13px]">Loading...</span>
             </div>
           )}
 
         {/* Show loading more data (lowest priority) */}
-        {!isSaving &&
+        {!loadingStatus &&
           !isAddingManyRows &&
           !tableData?.isFetching &&
           tableData?.isFetchingNextPage && (
             <div className="flex items-center gap-2 text-sm text-gray-600">
-              <div className="h-3 w-3 animate-spin rounded-full border border-gray-300 border-t-blue-600"></div>
-              <span>Loading more...</span>
+              <Loader2 className="h-3 w-3 animate-spin" />
+              <span className="text-[13px]">Loading more...</span>
             </div>
           )}
 
-        <SearchInput onChange={setSearchQuery} disabled={isSaving} />
+        <SearchInput onChange={setSearchQuery} disabled={!!loadingStatus} />
       </div>
     </div>
   );

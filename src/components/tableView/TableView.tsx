@@ -25,7 +25,7 @@ import { CELL_CONFIG, baseCellStyle } from "./constants";
 interface TableViewProps {
   tableData: TableData;
   tableActions: TableActions;
-  onSavingStateChange?: (isSaving: boolean) => void;
+  onSavingStateChange?: (savingStatus: string | null) => void;
 }
 
 const getCellWidth = (isRowNumber = false) => ({
@@ -45,7 +45,7 @@ export default function TableView({
     rowId: string;
     columnId: string;
   } | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
+  const [savingStatus, setSavingStatus] = useState<string | null>(null);
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -73,17 +73,17 @@ export default function TableView({
 
   // Notify parent when saving state changes
   useEffect(() => {
-    onSavingStateChange?.(isSaving);
-  }, [isSaving, onSavingStateChange]);
+    onSavingStateChange?.(savingStatus);
+  }, [savingStatus, onSavingStateChange]);
 
   // Memoized update function for table meta
   const updateData = useCallback(
     async (rowId: string, columnId: string, value: string | number) => {
-      setIsSaving(true);
+      setSavingStatus("Updating cell...");
       try {
         await tableActions.updateCell(rowId, columnId, value);
       } finally {
-        setIsSaving(false);
+        setSavingStatus(null);
       }
     },
     [tableActions],
@@ -112,20 +112,18 @@ export default function TableView({
         isOpen: false,
         rowId: null,
       }));
-      setIsSaving(true);
+      setSavingStatus("Deleting row...");
 
       try {
         const success = await tableActions.deleteRow(rowId);
-        if (success) {
-          toast.success("Record deleted successfully");
-        } else {
+        if (!success) {
           toast.error("Failed to delete record");
         }
       } catch (error) {
         console.error("Error deleting row:", error);
         toast.error("Failed to delete record");
       } finally {
-        setIsSaving(false);
+        setSavingStatus(null);
       }
     },
     [tableActions],
@@ -133,14 +131,14 @@ export default function TableView({
 
   // Handle context menu close
   const handleContextMenuClose = useCallback(() => {
-    if (!isSaving) {
+    if (!savingStatus) {
       setContextMenu((prev) => ({
         ...prev,
         isOpen: false,
         rowId: null,
       }));
     }
-  }, [isSaving]);
+  }, [savingStatus]);
 
   // Handle column header click
   const handleColumnHeaderRightClick = useCallback(
@@ -175,15 +173,20 @@ export default function TableView({
 
       handleColumnEditorClose();
 
-      setIsSaving(true);
+      setSavingStatus("Updating column...");
       try {
-        await tableActions.updateColumn(columnEditor.columnId, columnName);
-        toast.success("Column updated successfully");
+        const success = await tableActions.updateColumn(
+          columnEditor.columnId,
+          columnName,
+        );
+        if (!success) {
+          toast.error("Failed to update column");
+        }
       } catch (error) {
         console.error("Error updating column:", error);
         toast.error("Failed to update column");
       } finally {
-        setIsSaving(false);
+        setSavingStatus(null);
       }
     },
     [columnEditor.columnId, handleColumnEditorClose, tableActions],
@@ -194,15 +197,17 @@ export default function TableView({
     async (columnId: string) => {
       handleColumnEditorClose();
 
-      setIsSaving(true);
+      setSavingStatus("Deleting column...");
       try {
-        await tableActions.deleteColumn(columnId);
-        toast.success("Column deleted successfully");
+        const success = await tableActions.deleteColumn(columnId);
+        if (!success) {
+          toast.error("Failed to delete column");
+        }
       } catch (error) {
         console.error("Error deleting column:", error);
         toast.error("Failed to delete column");
       } finally {
-        setIsSaving(false);
+        setSavingStatus(null);
       }
     },
     [handleColumnEditorClose, tableActions],

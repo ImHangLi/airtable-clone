@@ -105,7 +105,7 @@ export function SearchInput({ onChange, disabled = false }: SearchInputProps) {
           aria-label="Clear search"
           type="button"
         >
-          <X className="h-3.5 w-3.5 text-gray-400" />
+          <X className="h-3.5 w-3.5" />
         </button>
       )}
 
