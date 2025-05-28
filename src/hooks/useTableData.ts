@@ -55,7 +55,7 @@ interface UseTableDataProps {
 }
 
 interface UseTableDataReturn {
-  loading: boolean;
+  loading: string | null;
   error: string | null;
   tableData: TableData | null;
   tableActions: TableActions;
@@ -155,6 +155,9 @@ export function useTableData({
 
       return { previousData };
     },
+    onSuccess: () => {
+      toast.success("Row created successfully");
+    },
     onError: (error, _, context) => {
       if (context?.previousData) {
         utils.data.getInfiniteTableData.setInfiniteData(
@@ -225,6 +228,9 @@ export function useTableData({
 
       return { previousData };
     },
+    onSuccess: () => {
+      toast.success("Cell updated successfully");
+    },
     onError: (error, _, context) => {
       if (context?.previousData) {
         utils.data.getInfiniteTableData.setInfiniteData(
@@ -291,6 +297,9 @@ export function useTableData({
 
       return { previousData };
     },
+    onSuccess: () => {
+      toast.success("Row deleted successfully");
+    },
     onError: (error, _, context) => {
       if (context?.previousData) {
         utils.data.getInfiniteTableData.setInfiniteData(
@@ -316,7 +325,69 @@ export function useTableData({
   });
 
   const updateColumnMutation = api.column.updateColumn.useMutation({
-    onError: (error) => {
+    onMutate: async ({ columnId, name }) => {
+      await utils.data.getInfiniteTableData.cancel({
+        tableId,
+        limit: hasSearch ? 50 : 150,
+        sorting,
+        search: hasSearch ? debouncedSearch : undefined,
+      });
+
+      const previousData = utils.data.getInfiniteTableData.getInfiniteData({
+        tableId,
+        limit: hasSearch ? 50 : 150,
+        sorting,
+        search: hasSearch ? debouncedSearch : undefined,
+      });
+
+      if (previousData) {
+        utils.data.getInfiniteTableData.setInfiniteData(
+          {
+            tableId,
+            limit: hasSearch ? 50 : 150,
+            sorting,
+            search: hasSearch ? debouncedSearch : undefined,
+          },
+          (oldData) => {
+            if (!oldData) return oldData;
+
+            const newPages = oldData.pages.map((page) => ({
+              ...page,
+              tableInfo: page.tableInfo
+                ? {
+                    ...page.tableInfo,
+                    columns: page.tableInfo.columns.map((col) =>
+                      col.id === columnId ? { ...col, name } : col,
+                    ),
+                  }
+                : page.tableInfo,
+            }));
+
+            return {
+              ...oldData,
+              pages: newPages,
+            };
+          },
+        );
+      }
+
+      return { previousData };
+    },
+    onSuccess: () => {
+      toast.success("Column updated successfully");
+    },
+    onError: (error, _, context) => {
+      if (context?.previousData) {
+        utils.data.getInfiniteTableData.setInfiniteData(
+          {
+            tableId,
+            limit: hasSearch ? 50 : 150,
+            sorting,
+            search: hasSearch ? debouncedSearch : undefined,
+          },
+          context.previousData,
+        );
+      }
       toast.error(`Failed to update column: ${error.message}`);
     },
     onSettled: () => {
@@ -330,7 +401,74 @@ export function useTableData({
   });
 
   const deleteColumnMutation = api.column.deleteColumn.useMutation({
-    onError: (error) => {
+    onMutate: async ({ columnId }) => {
+      await utils.data.getInfiniteTableData.cancel({
+        tableId,
+        limit: hasSearch ? 50 : 150,
+        sorting,
+        search: hasSearch ? debouncedSearch : undefined,
+      });
+
+      const previousData = utils.data.getInfiniteTableData.getInfiniteData({
+        tableId,
+        limit: hasSearch ? 50 : 150,
+        sorting,
+        search: hasSearch ? debouncedSearch : undefined,
+      });
+
+      if (previousData) {
+        utils.data.getInfiniteTableData.setInfiniteData(
+          {
+            tableId,
+            limit: hasSearch ? 50 : 150,
+            sorting,
+            search: hasSearch ? debouncedSearch : undefined,
+          },
+          (oldData) => {
+            if (!oldData) return oldData;
+
+            const newPages = oldData.pages.map((page) => ({
+              ...page,
+              tableInfo: page.tableInfo
+                ? {
+                    ...page.tableInfo,
+                    columns: page.tableInfo.columns.filter(
+                      (col) => col.id !== columnId,
+                    ),
+                  }
+                : page.tableInfo,
+              items: page.items.map((row) => {
+                const newCells = { ...row.cells };
+                delete newCells[columnId];
+                return { ...row, cells: newCells };
+              }),
+            }));
+
+            return {
+              ...oldData,
+              pages: newPages,
+            };
+          },
+        );
+      }
+
+      return { previousData };
+    },
+    onSuccess: () => {
+      toast.success("Column deleted successfully");
+    },
+    onError: (error, _, context) => {
+      if (context?.previousData) {
+        utils.data.getInfiniteTableData.setInfiniteData(
+          {
+            tableId,
+            limit: hasSearch ? 50 : 150,
+            sorting,
+            search: hasSearch ? debouncedSearch : undefined,
+          },
+          context.previousData,
+        );
+      }
       toast.error(`Failed to delete column: ${error.message}`);
     },
     onSettled: () => {
@@ -344,7 +482,88 @@ export function useTableData({
   });
 
   const addColumnMutation = api.column.addColumn.useMutation({
-    onError: (error) => {
+    onMutate: async ({ name, type }) => {
+      await utils.data.getInfiniteTableData.cancel({
+        tableId,
+        limit: hasSearch ? 50 : 150,
+        sorting,
+        search: hasSearch ? debouncedSearch : undefined,
+      });
+
+      const previousData = utils.data.getInfiniteTableData.getInfiniteData({
+        tableId,
+        limit: hasSearch ? 50 : 150,
+        sorting,
+        search: hasSearch ? debouncedSearch : undefined,
+      });
+
+      if (previousData && tableInfo) {
+        const tempColumnId = `temp-col-${Date.now()}`;
+        const now = new Date();
+
+        // Create a temporary column with all required fields
+        const newColumn = {
+          id: tempColumnId,
+          name,
+          type,
+          created_at: now,
+          updated_at: now,
+          base_id: baseId,
+          table_id: tableId,
+          position: tableInfo.columns.length,
+          is_visible: true,
+          sort: "asc" as const,
+        };
+
+        utils.data.getInfiniteTableData.setInfiniteData(
+          {
+            tableId,
+            limit: hasSearch ? 50 : 150,
+            sorting,
+            search: hasSearch ? debouncedSearch : undefined,
+          },
+          (oldData) => {
+            if (!oldData) return oldData;
+
+            const newPages = oldData.pages.map((page) => ({
+              ...page,
+              tableInfo: page.tableInfo
+                ? {
+                    ...page.tableInfo,
+                    columns: [...page.tableInfo.columns, newColumn],
+                  }
+                : page.tableInfo,
+              items: page.items.map((row) => ({
+                ...row,
+                cells: { ...row.cells, [tempColumnId]: "" },
+              })),
+            }));
+
+            return {
+              ...oldData,
+              pages: newPages,
+            };
+          },
+        );
+      }
+
+      return { previousData };
+    },
+    onSuccess: () => {
+      toast.success("Column added successfully");
+    },
+    onError: (error, _, context) => {
+      if (context?.previousData) {
+        utils.data.getInfiniteTableData.setInfiniteData(
+          {
+            tableId,
+            limit: hasSearch ? 50 : 150,
+            sorting,
+            search: hasSearch ? debouncedSearch : undefined,
+          },
+          context.previousData,
+        );
+      }
       toast.error(`Failed to add column: ${error.message}`);
     },
     onSettled: () => {
@@ -486,15 +705,32 @@ export function useTableData({
   // Calculate loading state
   const loading = useMemo(() => {
     const isInitialLoading = infiniteQuery.isPending && !infiniteQuery.data;
-    const isMutating =
-      createRowMutation.isPending ||
-      updateCellMutation.isPending ||
-      updateColumnMutation.isPending ||
-      deleteColumnMutation.isPending ||
-      deleteRowMutation.isPending ||
-      addColumnMutation.isPending;
 
-    return isInitialLoading || isMutating;
+    if (isInitialLoading) {
+      return "Loading table...";
+    }
+
+    // Check for specific mutation loading states
+    if (createRowMutation.isPending) {
+      return "Adding row...";
+    }
+    if (updateCellMutation.isPending) {
+      return "Updating cell...";
+    }
+    if (updateColumnMutation.isPending) {
+      return "Updating column...";
+    }
+    if (deleteColumnMutation.isPending) {
+      return "Deleting column...";
+    }
+    if (deleteRowMutation.isPending) {
+      return "Deleting row...";
+    }
+    if (addColumnMutation.isPending) {
+      return "Adding column...";
+    }
+
+    return null;
   }, [
     infiniteQuery.isPending,
     infiniteQuery.data,

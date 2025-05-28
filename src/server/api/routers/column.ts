@@ -15,6 +15,9 @@ import {
   deleteColumnSchema,
 } from "./shared/types";
 
+// Global map to track background processes for cancellation
+const backgroundProcesses = new Map<string, { cancelled: boolean }>();
+
 export const columnRouter = createTRPCRouter({
   // Update column name
   updateColumn: protectedProcedure
@@ -41,11 +44,20 @@ export const columnRouter = createTRPCRouter({
     .input(deleteColumnSchema)
     .mutation(async ({ ctx, input }): Promise<{ success: boolean }> => {
       try {
+        // Cancel any background processing for this column
+        const processControl = backgroundProcesses.get(input.columnId);
+        if (processControl) {
+          processControl.cancelled = true;
+        }
+
         // Delete all cells for this column first
         await ctx.db.delete(cells).where(eq(cells.column_id, input.columnId));
 
         // Then delete the column
         await ctx.db.delete(columns).where(eq(columns.id, input.columnId));
+
+        // Clean up the process control
+        backgroundProcesses.delete(input.columnId);
 
         return { success: true };
       } catch (error) {
@@ -128,12 +140,32 @@ export const columnRouter = createTRPCRouter({
 
           // Process remaining rows in background if there are more
           if (totalRows > BATCH_SIZE) {
+            // Register this process for potential cancellation
+            backgroundProcesses.set(newColumnId, { cancelled: false });
+
             const backgroundProcessing = async () => {
               const remainingRows = existingRows.slice(BATCH_SIZE);
               const numBatches = Math.ceil(remainingRows.length / BATCH_SIZE);
 
               for (let i = 0; i < numBatches; i++) {
                 try {
+                  // Check if process was cancelled
+                  const processControl = backgroundProcesses.get(newColumnId);
+                  if (processControl?.cancelled) {
+                    break;
+                  }
+
+                  // Check if column still exists before processing batch
+                  const columnExists = await ctx.db
+                    .select({ id: columns.id })
+                    .from(columns)
+                    .where(eq(columns.id, newColumnId))
+                    .limit(1);
+
+                  if (columnExists.length === 0) {
+                    break; // Exit the loop if column was deleted
+                  }
+
                   const batchStart = i * BATCH_SIZE;
                   const batchEnd = Math.min(
                     batchStart + BATCH_SIZE,
@@ -163,6 +195,9 @@ export const columnRouter = createTRPCRouter({
                   // Continue with next batch instead of failing completely
                 }
               }
+
+              // Clean up process control when done
+              backgroundProcesses.delete(newColumnId);
             };
 
             // Start background processing without awaiting
@@ -172,6 +207,8 @@ export const columnRouter = createTRPCRouter({
                 newColumnId,
                 error,
               );
+              // Clean up on error
+              backgroundProcesses.delete(newColumnId);
             });
           }
         }
