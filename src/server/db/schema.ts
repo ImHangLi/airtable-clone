@@ -97,8 +97,6 @@ export const cells = createTable(
       .notNull(),
     value_text: text("value_text"),
     value_number: doublePrecision("value_number"),
-    // Full-Text Search vector for text values
-    search_vector: text("search_vector").$type<string>(),
   },
   (t) => [
     primaryKey({ columns: [t.row_id, t.column_id] }),
