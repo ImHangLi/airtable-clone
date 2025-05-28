@@ -1,5 +1,4 @@
 import {
-  ArrowUpDown,
   ChevronDown,
   Eye,
   Filter,
@@ -29,6 +28,7 @@ import {
 } from "~/components/ui/form";
 import type { TableActions, TableData } from "~/hooks/useTableData";
 import { SearchInput } from "./SearchInput";
+import SortMenu, { type SortConfig } from "./SortMenu";
 
 interface ViewControlProps {
   tableId: string;
@@ -38,6 +38,8 @@ interface ViewControlProps {
   isSaving?: boolean;
   setIsSaving?: (saving: boolean) => void;
   setSearchQuery: (query: string) => void;
+  sorting: SortConfig[];
+  onSortingChange: (sorting: SortConfig[]) => void;
 }
 
 // Add column form component
@@ -165,6 +167,8 @@ export default function ViewControl({
   isSaving = false,
   setIsSaving,
   setSearchQuery,
+  sorting,
+  onSortingChange,
 }: ViewControlProps) {
   const [isAddColumnOpen, setIsAddColumnOpen] = useState(false);
   const [isAddingManyRows, setIsAddingManyRows] = useState(false);
@@ -173,11 +177,12 @@ export default function ViewControl({
   // Add many rows mutation
   const addManyRowsMutation = api.row.addManyRows.useMutation({
     onSuccess: () => {
-      toast.success("Added 100k rows to the table.");
-
       setIsAddingManyRows(false);
-
-      void utils.data.getInfiniteTableData.invalidate({ tableId, limit: 100 });
+      toast.success("Successfully added 100k rows!");
+      // Invalidate and refetch the table data
+      void utils.data.getInfiniteTableData.invalidate({
+        tableId: tableData?.name ?? "",
+      });
     },
     onError: (error) => {
       toast.error(`Error adding rows: ${error.message}`);
@@ -277,14 +282,11 @@ export default function ViewControl({
             <p className="hidden text-[13px] md:block">Group</p>
           </Button>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1.5 rounded px-2 text-sm font-normal text-gray-700 hover:bg-gray-100"
-          >
-            <ArrowUpDown className="h-4 w-4" />
-            <p className="hidden text-[13px] md:block">Sort</p>
-          </Button>
+          <SortMenu
+            columns={tableData?.columns ?? []}
+            sorting={sorting}
+            onSortingChange={onSortingChange}
+          />
         </div>
 
         {/* Action buttons section */}
@@ -353,13 +355,33 @@ export default function ViewControl({
           </div>
         )}
 
-        {/* Loading indicator - show for bulk operations and infinite scrolling */}
-        {(isAddingManyRows || tableData?.isFetchingNextPage) && (
+        {!isSaving && isAddingManyRows && (
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Loading...</span>
+            <span>Adding 100k rows...</span>
           </div>
         )}
+
+        {!isSaving &&
+          !isAddingManyRows &&
+          tableData?.isFetching &&
+          !tableData?.isFetchingNextPage && (
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Loading...</span>
+            </div>
+          )}
+
+        {/* Show loading more data (lowest priority) */}
+        {!isSaving &&
+          !isAddingManyRows &&
+          !tableData?.isFetching &&
+          tableData?.isFetchingNextPage && (
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <div className="h-3 w-3 animate-spin rounded-full border border-gray-300 border-t-blue-600"></div>
+              <span>Loading more...</span>
+            </div>
+          )}
 
         <SearchInput onChange={setSearchQuery} disabled={isSaving} />
       </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useState, useCallback } from "react";
 import { toast } from "sonner";
 import BaseTopNav from "~/components/base/BaseTopNav";
 import TableNav from "~/components/tableView/TableNav";
@@ -8,7 +8,7 @@ import ViewControl from "~/components/tableView/ViewControl";
 import ViewSide from "~/components/tableView/ViewSide";
 import TableView from "~/components/tableView/TableView";
 import { TableSkeleton } from "~/components/tableView/TableSkeleton";
-import { useTableData } from "~/hooks/useTableData";
+import { useTableData, type SortConfig } from "~/hooks/useTableData";
 import { getColorFromBaseId, getDarkerColorFromBaseId } from "~/lib/utils";
 import { api } from "~/trpc/react";
 
@@ -33,6 +33,19 @@ export default function TableViewPageClient({
   const [isSaving, setIsSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
+  // State for sorting functionality
+  const [sorting, setSorting] = useState<SortConfig[]>([]);
+
+  // Memoize the search query setter to prevent unnecessary re-renders
+  const handleSearchQueryChange = useCallback((query: string) => {
+    setSearchQuery(query);
+  }, []);
+
+  // Memoize the sorting change handler
+  const handleSortingChange = useCallback((newSorting: SortConfig[]) => {
+    setSorting(newSorting);
+  }, []);
+
   // Get base information using tRPC
   const { data: baseNameAndColor, error: baseError } =
     api.base.getNameAndColorById.useQuery({
@@ -44,6 +57,7 @@ export default function TableViewPageClient({
     tableId,
     baseId,
     search: searchQuery,
+    sorting,
   });
 
   // Derived values for UI
@@ -77,7 +91,9 @@ export default function TableViewPageClient({
         tableData={tableData ?? undefined}
         isSaving={isSaving}
         setIsSaving={setIsSaving}
-        setSearchQuery={setSearchQuery}
+        setSearchQuery={handleSearchQueryChange}
+        sorting={sorting}
+        onSortingChange={handleSortingChange}
       />
 
       {/* Main Content Area */}

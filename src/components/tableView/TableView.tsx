@@ -76,35 +76,17 @@ export default function TableView({
     onSavingStateChange?.(isSaving);
   }, [isSaving, onSavingStateChange]);
 
-  // Extract individual functions to prevent dependency chain issues
-  const updateCell = useMemo(
-    () => tableActions.updateCell,
-    [tableActions.updateCell],
-  );
-  const deleteRow = useMemo(
-    () => tableActions.deleteRow,
-    [tableActions.deleteRow],
-  );
-  const updateColumn = useMemo(
-    () => tableActions.updateColumn,
-    [tableActions.updateColumn],
-  );
-  const deleteColumn = useMemo(
-    () => tableActions.deleteColumn,
-    [tableActions.deleteColumn],
-  );
-
   // Memoized update function for table meta
   const updateData = useCallback(
     async (rowId: string, columnId: string, value: string | number) => {
       setIsSaving(true);
       try {
-        await updateCell(rowId, columnId, value);
+        await tableActions.updateCell(rowId, columnId, value);
       } finally {
         setIsSaving(false);
       }
     },
-    [updateCell],
+    [tableActions],
   );
 
   // Handle right-click on row
@@ -133,7 +115,7 @@ export default function TableView({
       setIsSaving(true);
 
       try {
-        const success = await deleteRow(rowId);
+        const success = await tableActions.deleteRow(rowId);
         if (success) {
           toast.success("Record deleted successfully");
         } else {
@@ -146,7 +128,7 @@ export default function TableView({
         setIsSaving(false);
       }
     },
-    [deleteRow],
+    [tableActions],
   );
 
   // Handle context menu close
@@ -195,7 +177,7 @@ export default function TableView({
 
       setIsSaving(true);
       try {
-        await updateColumn(columnEditor.columnId, columnName);
+        await tableActions.updateColumn(columnEditor.columnId, columnName);
         toast.success("Column updated successfully");
       } catch (error) {
         console.error("Error updating column:", error);
@@ -204,7 +186,7 @@ export default function TableView({
         setIsSaving(false);
       }
     },
-    [columnEditor.columnId, updateColumn, handleColumnEditorClose],
+    [columnEditor.columnId, handleColumnEditorClose, tableActions],
   );
 
   // Handle column delete from editor
@@ -214,7 +196,7 @@ export default function TableView({
 
       setIsSaving(true);
       try {
-        await deleteColumn(columnId);
+        await tableActions.deleteColumn(columnId);
         toast.success("Column deleted successfully");
       } catch (error) {
         console.error("Error deleting column:", error);
@@ -223,7 +205,7 @@ export default function TableView({
         setIsSaving(false);
       }
     },
-    [deleteColumn, handleColumnEditorClose],
+    [handleColumnEditorClose, tableActions],
   );
 
   // Memoized cell renderers
@@ -296,18 +278,19 @@ export default function TableView({
     count: tableData.rows.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => CELL_CONFIG.height,
-    overscan: 80,
+    overscan: 20,
   });
 
   const fetchMoreOnBottomReached = useCallback(
     (containerRefElement?: HTMLDivElement | null) => {
       if (containerRefElement) {
         const { scrollHeight, scrollTop, clientHeight } = containerRefElement;
-        // Once the user has scrolled within 1500px of the bottom, fetch more data if we can
+        // Optimized trigger distance - fetch when within 1000px of bottom
         if (
-          scrollHeight - scrollTop - clientHeight < 2000 &&
+          scrollHeight - scrollTop - clientHeight < 1000 &&
           !tableData.isFetching &&
-          tableData.totalRows < tableData.totalDBRowCount
+          !tableData.isFetchingNextPage &&
+          tableData.hasNextPage
         ) {
           tableData.fetchNextPage?.();
         }
@@ -448,6 +431,23 @@ export default function TableView({
                 </div>
               );
             })}
+
+            {/* Loading more indicator at bottom */}
+            {tableData.isFetchingNextPage && (
+              <div
+                className="absolute left-0 flex w-full items-center justify-center bg-white/90 py-4"
+                style={{
+                  top: `${rowVirtualizer.getTotalSize()}px`,
+                  width: totalColumnWidth,
+                  borderBottom: "1px solid #cccccc",
+                }}
+              >
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600"></div>
+                  <span>Loading more rows...</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
