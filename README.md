@@ -50,10 +50,10 @@ This is a [T3 Stack](https://create.t3.gg/) project bootstrapped with `create-t3
 - [ ] Filter:
   - [ ] Text: contains, not contains, is empty, is not empty, equals
   - [ ] Number: >, <, =
-- [ ] Sort:
-  - [ ] Text: A→Z, Z→A
-  - [ ] Number: ↑ ↓
-- [ ] All logic runs on the database
+- [X] Sort:
+  - [X] Text: A→Z, Z→A
+  - [X] Number: ↑ ↓
+- [X] All logic runs on the database
 
 ## Views
 
