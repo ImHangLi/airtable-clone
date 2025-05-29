@@ -7,7 +7,7 @@ export interface SortConfig {
 // Column highlighting configuration for visual feedback
 export interface ColumnHighlight {
   columnId: string;
-  type: "sort" | "search";
+  type: "sort" | "search" | "filter";
   color: string;
   priority?: number;
 }
