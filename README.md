@@ -47,9 +47,9 @@ This is a [T3 Stack](https://create.t3.gg/) project bootstrapped with `create-t3
 ## Search, Filter, Sort (DB-Level)
 
 - [X] Search all cells
-- [ ] Filter:
-  - [ ] Text: contains, not contains, is empty, is not empty, equals
-  - [ ] Number: >, <, =
+- [X] Filter:
+  - [X] Text: contains, not contains, is empty, is not empty, equals
+  - [X] Number: >, <, =
 - [X] Sort:
   - [X] Text: A→Z, Z→A
   - [X] Number: ↑ ↓
@@ -57,11 +57,15 @@ This is a [T3 Stack](https://create.t3.gg/) project bootstrapped with `create-t3
 
 ## Views
 
-- [ ] Create & save table views
-- [ ] Multiple tables per base
-- [ ] Multiple views per table
-- [ ] Views store filters, sorts, hidden columns
-- [ ] Show/hide and search columns
+Create & save table views
+
+Multiple tables per base
+
+Multiple views per table
+
+Views store filters, sorts, hidden columns
+
+Show/hide and search columns
 
 ## Final
 
