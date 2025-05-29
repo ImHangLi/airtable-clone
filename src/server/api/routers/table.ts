@@ -85,7 +85,7 @@ export const tableRouter = createTRPCRouter({
 
         // Create sample data directly in procedure
         const [nameColumnId, ageColumnId] = columnIds;
-        const rowCount = 20;
+        const rowCount = 25;
         const rowData = [];
         const cellData = [];
 
