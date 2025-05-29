@@ -18,17 +18,20 @@ import {
   operatorRequiresValue,
 } from "~/types/filtering";
 import { FilterMenuLoadingState } from "./FilterMenuLoadingState";
+import type { ColumnHighlight } from "~/types/sorting";
 
 interface FilterMenuProps {
   columns: TableColumn[];
   filtering?: FilterPreference[];
   onFilteringChange: (filtering: FilterPreference[]) => void;
+  onHighlightChange?: (highlights: ColumnHighlight[]) => void;
 }
 
 export default function FilterMenu({
   columns,
   filtering = [],
   onFilteringChange,
+  onHighlightChange,
 }: FilterMenuProps) {
   const [filterOpen, setFilterOpen] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
@@ -82,6 +85,19 @@ export default function FilterMenu({
       onFilteringChange(updatedFiltering);
     }
   }, [debouncedInputValues, filtering, onFilteringChange]);
+
+  // Update column highlights when applied filters change
+  useEffect(() => {
+    if (!onHighlightChange) return;
+
+    const highlights: ColumnHighlight[] = appliedFilters.map((filter) => ({
+      columnId: filter.columnId,
+      type: "filter",
+      color: "#CFF5D1",
+    }));
+
+    onHighlightChange(highlights);
+  }, [appliedFilters, onHighlightChange]);
 
   const handleAddFilter = useCallback(
     (columnId: string) => {

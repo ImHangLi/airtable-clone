@@ -267,6 +267,7 @@ export default function ViewControl({
             columns={tableData?.columns ?? []}
             filtering={filtering}
             onFilteringChange={onFilteringChange}
+            onHighlightChange={onHighlightChange}
           />
 
           <Button

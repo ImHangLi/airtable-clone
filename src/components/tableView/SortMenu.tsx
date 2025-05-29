@@ -7,7 +7,7 @@ import {
 import { Button } from "../ui/button";
 import { ArrowUpDown, ChevronDown, Plus, Trash2, X } from "lucide-react";
 import { cn } from "~/lib/utils";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { TableColumn } from "~/hooks/useTableData";
 import { SortMenuLoadingState } from "./SortMenuLoadingState";
 import type { ColumnHighlight } from "~/types/sorting";
@@ -28,12 +28,26 @@ export default function SortMenu({
   columns,
   sorting,
   onSortingChange,
+  onHighlightChange,
 }: SortMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [addSortOpen, setAddSortOpen] = useState(false);
 
   // Filter columns that can be sorted (exclude hidden columns)
   const sortableColumns = columns;
+
+  // Update column highlights when sorting changes
+  useEffect(() => {
+    if (!onHighlightChange) return;
+
+    const highlights: ColumnHighlight[] = sorting.map((sort) => ({
+      columnId: sort.id,
+      type: "sort",
+      color: "#fff2ea",
+    }));
+
+    onHighlightChange(highlights);
+  }, [sorting, onHighlightChange]);
 
   const handleAddSort = useCallback(
     (columnId: string) => {

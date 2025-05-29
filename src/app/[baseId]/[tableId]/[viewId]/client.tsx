@@ -65,7 +65,18 @@ export default function TableViewPageClient({
   // Memoize the highlight change handler
   const handleHighlightChange = useCallback(
     (newHighlights: ColumnHighlight[]) => {
-      setHighlights(newHighlights);
+      setHighlights((prevHighlights) => {
+        // Get column IDs that are being updated
+        const incomingColumnIds = new Set(newHighlights.map((h) => h.columnId));
+
+        // Remove existing highlights for columns that are being updated
+        const filteredHighlights = prevHighlights.filter(
+          (h) => !incomingColumnIds.has(h.columnId),
+        );
+
+        // Add new highlights (they will override any existing ones for the same columns)
+        return [...filteredHighlights, ...newHighlights];
+      });
     },
     [],
   );
