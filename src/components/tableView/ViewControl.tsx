@@ -1,7 +1,6 @@
 import {
   ChevronDown,
   Eye,
-  Filter,
   Grid,
   Group,
   Menu,
@@ -28,7 +27,10 @@ import {
 } from "~/components/ui/form";
 import type { TableActions, TableData } from "~/hooks/useTableData";
 import { SearchInput } from "./SearchInput";
-import SortMenu, { type SortConfig } from "./SortMenu";
+import SortMenu from "./SortMenu";
+import FilterMenu from "./FilterMenu";
+import type { FilterPreference } from "~/types/filtering";
+import type { SortConfig, ColumnHighlight } from "~/types/sorting";
 
 interface ViewControlProps {
   tableId: string;
@@ -39,6 +41,9 @@ interface ViewControlProps {
   setSearchQuery: (query: string) => void;
   sorting: SortConfig[];
   onSortingChange: (sorting: SortConfig[]) => void;
+  filtering: FilterPreference[];
+  onFilteringChange: (filtering: FilterPreference[]) => void;
+  onHighlightChange?: (highlights: ColumnHighlight[]) => void;
 }
 
 // Add column form component
@@ -167,6 +172,9 @@ export default function ViewControl({
   setSearchQuery,
   sorting,
   onSortingChange,
+  filtering,
+  onFilteringChange,
+  onHighlightChange,
 }: ViewControlProps) {
   const [isAddColumnOpen, setIsAddColumnOpen] = useState(false);
   const [isAddingManyRows, setIsAddingManyRows] = useState(false);
@@ -255,15 +263,11 @@ export default function ViewControl({
             <p className="hidden text-[13px] md:block">Hide fields</p>
           </Button>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1.5 rounded px-2 text-sm font-normal text-gray-700 hover:bg-gray-100"
-            title="Filter button"
-          >
-            <Filter className="h-4 w-4" />
-            <p className="hidden text-[13px] md:block">Filter</p>
-          </Button>
+          <FilterMenu
+            columns={tableData?.columns ?? []}
+            filtering={filtering}
+            onFilteringChange={onFilteringChange}
+          />
 
           <Button
             variant="ghost"
@@ -278,6 +282,7 @@ export default function ViewControl({
             columns={tableData?.columns ?? []}
             sorting={sorting}
             onSortingChange={onSortingChange}
+            onHighlightChange={onHighlightChange}
           />
         </div>
 

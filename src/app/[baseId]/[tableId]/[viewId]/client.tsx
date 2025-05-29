@@ -8,9 +8,11 @@ import ViewControl from "~/components/tableView/ViewControl";
 import ViewSide from "~/components/tableView/ViewSide";
 import TableView from "~/components/tableView/TableView";
 import { TableSkeleton } from "~/components/tableView/TableSkeleton";
-import { useTableData, type SortConfig } from "~/hooks/useTableData";
+import { useTableData } from "~/hooks/useTableData";
 import { getColorFromBaseId, getDarkerColorFromBaseId } from "~/lib/utils";
 import { api } from "~/trpc/react";
+import type { FilterPreference } from "~/types/filtering";
+import type { SortConfig, ColumnHighlight } from "~/types/sorting";
 
 // Component props
 interface TableViewPageClientProps {
@@ -37,6 +39,10 @@ export default function TableViewPageClient({
 
   // State for sorting functionality
   const [sorting, setSorting] = useState<SortConfig[]>([]);
+  const [filtering, setFiltering] = useState<FilterPreference[]>([]);
+
+  // State for column highlighting
+  const [highlights, setHighlights] = useState<ColumnHighlight[]>([]);
 
   // Memoize the search query setter to prevent unnecessary re-renders
   const handleSearchQueryChange = useCallback((query: string) => {
@@ -47,6 +53,22 @@ export default function TableViewPageClient({
   const handleSortingChange = useCallback((newSorting: SortConfig[]) => {
     setSorting(newSorting);
   }, []);
+
+  // Memoize the filtering change handler
+  const handleFilteringChange = useCallback(
+    (newFiltering: FilterPreference[]) => {
+      setFiltering(newFiltering);
+    },
+    [],
+  );
+
+  // Memoize the highlight change handler
+  const handleHighlightChange = useCallback(
+    (newHighlights: ColumnHighlight[]) => {
+      setHighlights(newHighlights);
+    },
+    [],
+  );
 
   // Get base information using tRPC
   const { data: baseNameAndColor, error: baseError } =
@@ -65,6 +87,7 @@ export default function TableViewPageClient({
     baseId,
     search: searchQuery,
     sorting,
+    filtering,
   });
 
   // Combine loading states - prioritize table operations over hook operations
@@ -103,6 +126,9 @@ export default function TableViewPageClient({
         setSearchQuery={handleSearchQueryChange}
         sorting={sorting}
         onSortingChange={handleSortingChange}
+        filtering={filtering}
+        onFilteringChange={handleFilteringChange}
+        onHighlightChange={handleHighlightChange}
       />
 
       {/* Main Content Area */}
@@ -119,6 +145,7 @@ export default function TableViewPageClient({
               tableData={tableData}
               tableActions={tableActions}
               onSavingStateChange={setTableSavingStatus}
+              highlights={highlights}
             />
           ) : (
             <TableSkeleton />

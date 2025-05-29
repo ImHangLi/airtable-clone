@@ -1,13 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useCallback } from "react";
 import { api } from "~/trpc/react";
 import { toast } from "sonner";
-import { useDebounce } from "./useDebounce";
 import type { Column } from "~/server/db/schema";
-
-export interface SortConfig {
-  id: string;
-  desc: boolean;
-}
+import type { FilterPreference } from "~/types/filtering";
+import { operatorRequiresValue } from "~/types/filtering";
+import type { SortConfig } from "~/types/sorting";
 
 export interface TableColumn {
   id: string;
@@ -31,6 +28,7 @@ export interface TableData {
   isFetching?: boolean;
   isFetchingNextPage?: boolean;
   isSearchResult?: boolean;
+  isFilterResult?: boolean;
 }
 
 export interface TableActions {
@@ -52,6 +50,7 @@ interface UseTableDataProps {
   baseId: string;
   search?: string;
   sorting?: SortConfig[];
+  filtering?: FilterPreference[];
 }
 
 interface UseTableDataReturn {
@@ -66,11 +65,27 @@ export function useTableData({
   baseId,
   search,
   sorting,
+  filtering,
 }: UseTableDataProps): UseTableDataReturn {
   const utils = api.useUtils();
 
-  const debouncedSearch = useDebounce(search?.trim() ?? "", 500);
+  const debouncedSearch = search?.trim() ?? "";
   const hasSearch = Boolean(debouncedSearch);
+
+  // Filter out incomplete filters (those with empty values for operators that require values)
+  const completeFilters = useMemo(() => {
+    if (!filtering) return [];
+
+    return filtering.filter((filter) => {
+      // Always include filters that don't require values (is_empty, is_not_empty)
+      if (!operatorRequiresValue(filter.operator)) {
+        return true;
+      }
+
+      // Only include filters that have non-empty values for operators that require values
+      return filter.value.trim() !== "";
+    });
+  }, [filtering]);
 
   // Use tRPC's useInfiniteQuery for proper pagination
   const infiniteQuery = api.data.getInfiniteTableData.useInfiniteQuery(
@@ -78,6 +93,7 @@ export function useTableData({
       tableId,
       limit: hasSearch ? 50 : 150,
       sorting,
+      filtering: completeFilters, // Use filtered complete filters instead of raw filtering
       search: hasSearch ? debouncedSearch : undefined,
     },
     {
@@ -99,23 +115,28 @@ export function useTableData({
   const tableInfo = infiniteQuery.data?.pages[0]?.tableInfo;
   const totalRowCount = infiniteQuery.data?.pages[0]?.totalRowCount ?? 0;
   const isSearchResult = infiniteQuery.data?.pages[0]?.isSearchResult ?? false;
+  const isFilterResult = infiniteQuery.data?.pages[0]?.isFilterResult ?? false;
+
+  // Helper function to get query params for cache operations
+  const getQueryParams = useCallback(
+    () => ({
+      tableId,
+      limit: hasSearch ? 50 : 150,
+      sorting,
+      filtering: completeFilters,
+      search: hasSearch ? debouncedSearch : undefined,
+    }),
+    [tableId, hasSearch, sorting, completeFilters, debouncedSearch],
+  );
 
   // Mutations for table operations
   const createRowMutation = api.row.createRow.useMutation({
     onMutate: async () => {
-      await utils.data.getInfiniteTableData.cancel({
-        tableId,
-        limit: hasSearch ? 50 : 150,
-        sorting,
-        search: hasSearch ? debouncedSearch : undefined,
-      });
+      const queryParams = getQueryParams();
+      await utils.data.getInfiniteTableData.cancel(queryParams);
 
-      const previousData = utils.data.getInfiniteTableData.getInfiniteData({
-        tableId,
-        limit: hasSearch ? 50 : 150,
-        sorting,
-        search: hasSearch ? debouncedSearch : undefined,
-      });
+      const previousData =
+        utils.data.getInfiniteTableData.getInfiniteData(queryParams);
 
       if (previousData && tableInfo) {
         const tempRowId = `temp-${Date.now()}`;
@@ -128,12 +149,7 @@ export function useTableData({
         const newRow = { id: tempRowId, cells: emptyCells };
 
         utils.data.getInfiniteTableData.setInfiniteData(
-          {
-            tableId,
-            limit: hasSearch ? 50 : 150,
-            sorting,
-            search: hasSearch ? debouncedSearch : undefined,
-          },
+          queryParams,
           (oldData) => {
             if (!oldData) return oldData;
 
@@ -161,51 +177,28 @@ export function useTableData({
     onError: (error, _, context) => {
       if (context?.previousData) {
         utils.data.getInfiniteTableData.setInfiniteData(
-          {
-            tableId,
-            limit: hasSearch ? 50 : 150,
-            sorting,
-            search: hasSearch ? debouncedSearch : undefined,
-          },
+          getQueryParams(),
           context.previousData,
         );
       }
       toast.error(`Failed to create row: ${error.message}`);
     },
     onSettled: () => {
-      void utils.data.getInfiniteTableData.invalidate({
-        tableId,
-        limit: hasSearch ? 50 : 150,
-        sorting,
-        search: hasSearch ? debouncedSearch : undefined,
-      });
+      void utils.data.getInfiniteTableData.invalidate(getQueryParams());
     },
   });
 
   const updateCellMutation = api.cell.updateCell.useMutation({
     onMutate: async ({ rowId, columnId, value }) => {
-      await utils.data.getInfiniteTableData.cancel({
-        tableId,
-        limit: hasSearch ? 50 : 150,
-        sorting,
-        search: hasSearch ? debouncedSearch : undefined,
-      });
+      const queryParams = getQueryParams();
+      await utils.data.getInfiniteTableData.cancel(queryParams);
 
-      const previousData = utils.data.getInfiniteTableData.getInfiniteData({
-        tableId,
-        limit: hasSearch ? 50 : 150,
-        sorting,
-        search: hasSearch ? debouncedSearch : undefined,
-      });
+      const previousData =
+        utils.data.getInfiniteTableData.getInfiniteData(queryParams);
 
       if (previousData) {
         utils.data.getInfiniteTableData.setInfiniteData(
-          {
-            tableId,
-            limit: hasSearch ? 50 : 150,
-            sorting,
-            search: hasSearch ? debouncedSearch : undefined,
-          },
+          queryParams,
           (oldData) => {
             if (!oldData) return oldData;
 
@@ -234,51 +227,28 @@ export function useTableData({
     onError: (error, _, context) => {
       if (context?.previousData) {
         utils.data.getInfiniteTableData.setInfiniteData(
-          {
-            tableId,
-            limit: hasSearch ? 50 : 150,
-            sorting,
-            search: hasSearch ? debouncedSearch : undefined,
-          },
+          getQueryParams(),
           context.previousData,
         );
       }
       toast.error(`Failed to update cell: ${error.message}`);
     },
     onSettled: () => {
-      void utils.data.getInfiniteTableData.invalidate({
-        tableId,
-        limit: hasSearch ? 50 : 150,
-        sorting,
-        search: hasSearch ? debouncedSearch : undefined,
-      });
+      void utils.data.getInfiniteTableData.invalidate(getQueryParams());
     },
   });
 
   const deleteRowMutation = api.row.deleteRow.useMutation({
     onMutate: async ({ rowId }) => {
-      await utils.data.getInfiniteTableData.cancel({
-        tableId,
-        limit: hasSearch ? 50 : 150,
-        sorting,
-        search: hasSearch ? debouncedSearch : undefined,
-      });
+      const queryParams = getQueryParams();
+      await utils.data.getInfiniteTableData.cancel(queryParams);
 
-      const previousData = utils.data.getInfiniteTableData.getInfiniteData({
-        tableId,
-        limit: hasSearch ? 50 : 150,
-        sorting,
-        search: hasSearch ? debouncedSearch : undefined,
-      });
+      const previousData =
+        utils.data.getInfiniteTableData.getInfiniteData(queryParams);
 
       if (previousData) {
         utils.data.getInfiniteTableData.setInfiniteData(
-          {
-            tableId,
-            limit: hasSearch ? 50 : 150,
-            sorting,
-            search: hasSearch ? debouncedSearch : undefined,
-          },
+          queryParams,
           (oldData) => {
             if (!oldData) return oldData;
 
@@ -303,51 +273,28 @@ export function useTableData({
     onError: (error, _, context) => {
       if (context?.previousData) {
         utils.data.getInfiniteTableData.setInfiniteData(
-          {
-            tableId,
-            limit: hasSearch ? 50 : 150,
-            sorting,
-            search: hasSearch ? debouncedSearch : undefined,
-          },
+          getQueryParams(),
           context.previousData,
         );
       }
       toast.error(`Failed to delete row: ${error.message}`);
     },
     onSettled: () => {
-      void utils.data.getInfiniteTableData.invalidate({
-        tableId,
-        limit: hasSearch ? 50 : 150,
-        sorting,
-        search: hasSearch ? debouncedSearch : undefined,
-      });
+      void utils.data.getInfiniteTableData.invalidate(getQueryParams());
     },
   });
 
   const updateColumnMutation = api.column.updateColumn.useMutation({
     onMutate: async ({ columnId, name }) => {
-      await utils.data.getInfiniteTableData.cancel({
-        tableId,
-        limit: hasSearch ? 50 : 150,
-        sorting,
-        search: hasSearch ? debouncedSearch : undefined,
-      });
+      const queryParams = getQueryParams();
+      await utils.data.getInfiniteTableData.cancel(queryParams);
 
-      const previousData = utils.data.getInfiniteTableData.getInfiniteData({
-        tableId,
-        limit: hasSearch ? 50 : 150,
-        sorting,
-        search: hasSearch ? debouncedSearch : undefined,
-      });
+      const previousData =
+        utils.data.getInfiniteTableData.getInfiniteData(queryParams);
 
       if (previousData) {
         utils.data.getInfiniteTableData.setInfiniteData(
-          {
-            tableId,
-            limit: hasSearch ? 50 : 150,
-            sorting,
-            search: hasSearch ? debouncedSearch : undefined,
-          },
+          queryParams,
           (oldData) => {
             if (!oldData) return oldData;
 
@@ -379,51 +326,28 @@ export function useTableData({
     onError: (error, _, context) => {
       if (context?.previousData) {
         utils.data.getInfiniteTableData.setInfiniteData(
-          {
-            tableId,
-            limit: hasSearch ? 50 : 150,
-            sorting,
-            search: hasSearch ? debouncedSearch : undefined,
-          },
+          getQueryParams(),
           context.previousData,
         );
       }
       toast.error(`Failed to update column: ${error.message}`);
     },
     onSettled: () => {
-      void utils.data.getInfiniteTableData.invalidate({
-        tableId,
-        limit: hasSearch ? 50 : 150,
-        sorting,
-        search: hasSearch ? debouncedSearch : undefined,
-      });
+      void utils.data.getInfiniteTableData.invalidate(getQueryParams());
     },
   });
 
   const deleteColumnMutation = api.column.deleteColumn.useMutation({
     onMutate: async ({ columnId }) => {
-      await utils.data.getInfiniteTableData.cancel({
-        tableId,
-        limit: hasSearch ? 50 : 150,
-        sorting,
-        search: hasSearch ? debouncedSearch : undefined,
-      });
+      const queryParams = getQueryParams();
+      await utils.data.getInfiniteTableData.cancel(queryParams);
 
-      const previousData = utils.data.getInfiniteTableData.getInfiniteData({
-        tableId,
-        limit: hasSearch ? 50 : 150,
-        sorting,
-        search: hasSearch ? debouncedSearch : undefined,
-      });
+      const previousData =
+        utils.data.getInfiniteTableData.getInfiniteData(queryParams);
 
       if (previousData) {
         utils.data.getInfiniteTableData.setInfiniteData(
-          {
-            tableId,
-            limit: hasSearch ? 50 : 150,
-            sorting,
-            search: hasSearch ? debouncedSearch : undefined,
-          },
+          queryParams,
           (oldData) => {
             if (!oldData) return oldData;
 
@@ -460,42 +384,24 @@ export function useTableData({
     onError: (error, _, context) => {
       if (context?.previousData) {
         utils.data.getInfiniteTableData.setInfiniteData(
-          {
-            tableId,
-            limit: hasSearch ? 50 : 150,
-            sorting,
-            search: hasSearch ? debouncedSearch : undefined,
-          },
+          getQueryParams(),
           context.previousData,
         );
       }
       toast.error(`Failed to delete column: ${error.message}`);
     },
     onSettled: () => {
-      void utils.data.getInfiniteTableData.invalidate({
-        tableId,
-        limit: hasSearch ? 50 : 150,
-        sorting,
-        search: hasSearch ? debouncedSearch : undefined,
-      });
+      void utils.data.getInfiniteTableData.invalidate(getQueryParams());
     },
   });
 
   const addColumnMutation = api.column.addColumn.useMutation({
     onMutate: async ({ name, type }) => {
-      await utils.data.getInfiniteTableData.cancel({
-        tableId,
-        limit: hasSearch ? 50 : 150,
-        sorting,
-        search: hasSearch ? debouncedSearch : undefined,
-      });
+      const queryParams = getQueryParams();
+      await utils.data.getInfiniteTableData.cancel(queryParams);
 
-      const previousData = utils.data.getInfiniteTableData.getInfiniteData({
-        tableId,
-        limit: hasSearch ? 50 : 150,
-        sorting,
-        search: hasSearch ? debouncedSearch : undefined,
-      });
+      const previousData =
+        utils.data.getInfiniteTableData.getInfiniteData(queryParams);
 
       if (previousData && tableInfo) {
         const tempColumnId = `temp-col-${Date.now()}`;
@@ -516,12 +422,7 @@ export function useTableData({
         };
 
         utils.data.getInfiniteTableData.setInfiniteData(
-          {
-            tableId,
-            limit: hasSearch ? 50 : 150,
-            sorting,
-            search: hasSearch ? debouncedSearch : undefined,
-          },
+          queryParams,
           (oldData) => {
             if (!oldData) return oldData;
 
@@ -555,24 +456,14 @@ export function useTableData({
     onError: (error, _, context) => {
       if (context?.previousData) {
         utils.data.getInfiniteTableData.setInfiniteData(
-          {
-            tableId,
-            limit: hasSearch ? 50 : 150,
-            sorting,
-            search: hasSearch ? debouncedSearch : undefined,
-          },
+          getQueryParams(),
           context.previousData,
         );
       }
       toast.error(`Failed to add column: ${error.message}`);
     },
     onSettled: () => {
-      void utils.data.getInfiniteTableData.invalidate({
-        tableId,
-        limit: hasSearch ? 50 : 150,
-        sorting,
-        search: hasSearch ? debouncedSearch : undefined,
-      });
+      void utils.data.getInfiniteTableData.invalidate(getQueryParams());
     },
   });
 
@@ -595,8 +486,16 @@ export function useTableData({
       isFetching: infiniteQuery.isFetching,
       isFetchingNextPage: infiniteQuery.isFetchingNextPage,
       isSearchResult,
+      isFilterResult,
     };
-  }, [tableInfo, allRows, totalRowCount, isSearchResult, infiniteQuery]);
+  }, [
+    tableInfo,
+    allRows,
+    totalRowCount,
+    isSearchResult,
+    isFilterResult,
+    infiniteQuery,
+  ]);
 
   const tableActions = useMemo(
     (): TableActions => ({
@@ -707,7 +606,7 @@ export function useTableData({
     const isInitialLoading = infiniteQuery.isPending && !infiniteQuery.data;
 
     if (isInitialLoading) {
-      return "Loading table...";
+      return "Loading...";
     }
 
     // Check for specific mutation loading states

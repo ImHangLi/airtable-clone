@@ -15,6 +15,7 @@ import type {
   TableData,
   TableColumn,
 } from "~/hooks/useTableData";
+import type { ColumnHighlight } from "~/types/sorting";
 
 import { RowNumberCell } from "./RowNumberCell";
 import { ColumnHeaderEditor } from "./ColumnHeaderEditor";
@@ -26,6 +27,7 @@ interface TableViewProps {
   tableData: TableData;
   tableActions: TableActions;
   onSavingStateChange?: (savingStatus: string | null) => void;
+  highlights?: ColumnHighlight[];
 }
 
 const getCellWidth = (isRowNumber = false) => ({
@@ -39,6 +41,7 @@ export default function TableView({
   tableData,
   tableActions,
   onSavingStateChange,
+  highlights,
 }: TableViewProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [editingCell, setEditingCell] = useState<{
@@ -75,6 +78,21 @@ export default function TableView({
   useEffect(() => {
     onSavingStateChange?.(savingStatus);
   }, [savingStatus, onSavingStateChange]);
+
+  // Helper function to get cell highlight style
+  const getCellHighlightStyle = useCallback(
+    (columnId: string): React.CSSProperties => {
+      if (!highlights || highlights.length === 0) return {};
+
+      const highlight = highlights.find((h) => h.columnId === columnId);
+      if (!highlight) return {};
+
+      return {
+        backgroundColor: highlight.color,
+      };
+    },
+    [highlights],
+  );
 
   // Memoized update function for table meta
   const updateData = useCallback(
@@ -401,6 +419,10 @@ export default function TableView({
                         editingCell?.rowId === row.original.id &&
                         editingCell?.columnId === cell.column.id;
 
+                      const isHighlighted = highlights?.some(
+                        (h) => h.columnId === cell.column.id,
+                      );
+
                       return (
                         <div
                           key={cell.id}
@@ -409,13 +431,16 @@ export default function TableView({
                           style={{
                             ...baseCellStyle,
                             ...getCellWidth(cell.column.id === "rowNumber"),
+                            ...getCellHighlightStyle(cell.column.id),
                             borderRight: isEditing
                               ? "1px solid #186ce4"
                               : "1px solid #cccccc",
                             borderTop: isEditing ? "1px solid #186ce4" : "none",
                             borderBottom: isEditing
                               ? "1px solid #186ce4"
-                              : "none",
+                              : isHighlighted
+                                ? "1px solid #cccccc"
+                                : "none",
                             borderLeft: isEditing
                               ? "1px solid #186ce4"
                               : "none",
