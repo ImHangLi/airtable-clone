@@ -43,7 +43,8 @@ interface ViewControlProps {
   onSortingChange: (sorting: SortConfig[]) => void;
   filtering: FilterPreference[];
   onFilteringChange: (filtering: FilterPreference[]) => void;
-  onHighlightChange?: (highlights: ColumnHighlight[]) => void;
+  onSortHighlightChange?: (highlights: ColumnHighlight[]) => void;
+  onFilterHighlightChange?: (highlights: ColumnHighlight[]) => void;
 }
 
 // Add column form component
@@ -174,7 +175,8 @@ export default function ViewControl({
   onSortingChange,
   filtering,
   onFilteringChange,
-  onHighlightChange,
+  onSortHighlightChange,
+  onFilterHighlightChange,
 }: ViewControlProps) {
   const [isAddColumnOpen, setIsAddColumnOpen] = useState(false);
   const [isAddingManyRows, setIsAddingManyRows] = useState(false);
@@ -267,7 +269,7 @@ export default function ViewControl({
             columns={tableData?.columns ?? []}
             filtering={filtering}
             onFilteringChange={onFilteringChange}
-            onHighlightChange={onHighlightChange}
+            onHighlightChange={onFilterHighlightChange}
           />
 
           <Button
@@ -283,7 +285,7 @@ export default function ViewControl({
             columns={tableData?.columns ?? []}
             sorting={sorting}
             onSortingChange={onSortingChange}
-            onHighlightChange={onHighlightChange}
+            onHighlightChange={onSortHighlightChange}
           />
         </div>
 

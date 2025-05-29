@@ -62,19 +62,29 @@ export default function TableViewPageClient({
     [],
   );
 
-  // Memoize the highlight change handler
-  const handleHighlightChange = useCallback(
+  // Memoize separate highlight change handlers
+  const handleSortHighlightChange = useCallback(
     (newHighlights: ColumnHighlight[]) => {
       setHighlights((prevHighlights) => {
-        // Get column IDs that are being updated
-        const incomingColumnIds = new Set(newHighlights.map((h) => h.columnId));
-
-        // Remove existing highlights for columns that are being updated
+        // Remove all existing sort highlights
         const filteredHighlights = prevHighlights.filter(
-          (h) => !incomingColumnIds.has(h.columnId),
+          (h) => h.type !== "sort",
         );
+        // Add new sort highlights
+        return [...filteredHighlights, ...newHighlights];
+      });
+    },
+    [],
+  );
 
-        // Add new highlights (they will override any existing ones for the same columns)
+  const handleFilterHighlightChange = useCallback(
+    (newHighlights: ColumnHighlight[]) => {
+      setHighlights((prevHighlights) => {
+        // Remove all existing filter highlights
+        const filteredHighlights = prevHighlights.filter(
+          (h) => h.type !== "filter",
+        );
+        // Add new filter highlight
         return [...filteredHighlights, ...newHighlights];
       });
     },
@@ -139,7 +149,8 @@ export default function TableViewPageClient({
         onSortingChange={handleSortingChange}
         filtering={filtering}
         onFilteringChange={handleFilteringChange}
-        onHighlightChange={handleHighlightChange}
+        onSortHighlightChange={handleSortHighlightChange}
+        onFilterHighlightChange={handleFilterHighlightChange}
       />
 
       {/* Main Content Area */}
