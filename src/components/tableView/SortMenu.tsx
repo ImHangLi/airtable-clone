@@ -9,8 +9,9 @@ import { ArrowUpDown, ChevronDown, Plus, Trash2, X } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { useState, useCallback } from "react";
 import type { TableColumn } from "~/hooks/useTableData";
+import { SortMenuLoadingState } from "./SortMenuLoadingState";
+import type { ColumnHighlight } from "~/types/sorting";
 
-// Define sorting types
 export interface SortConfig {
   id: string;
   desc: boolean;
@@ -20,6 +21,7 @@ interface SortMenuProps {
   columns: TableColumn[];
   sorting: SortConfig[];
   onSortingChange: (sorting: SortConfig[]) => void;
+  onHighlightChange?: (highlights: ColumnHighlight[]) => void;
 }
 
 export default function SortMenu({
@@ -30,10 +32,9 @@ export default function SortMenu({
   const [isOpen, setIsOpen] = useState(false);
   const [addSortOpen, setAddSortOpen] = useState(false);
 
-  // Filter columns that can be sorted (all columns in our case)
+  // Filter columns that can be sorted (exclude hidden columns)
   const sortableColumns = columns;
 
-  // Handle adding a new sort
   const handleAddSort = useCallback(
     (columnId: string) => {
       const newSort: SortConfig = { id: columnId, desc: false };
@@ -43,7 +44,6 @@ export default function SortMenu({
     [sorting, onSortingChange],
   );
 
-  // Handle removing a sort
   const handleRemoveSort = useCallback(
     (columnId: string) => {
       onSortingChange(sorting.filter((sort) => sort.id !== columnId));
@@ -51,12 +51,10 @@ export default function SortMenu({
     [sorting, onSortingChange],
   );
 
-  // Handle clearing all sorts
   const handleClearAll = useCallback(() => {
     onSortingChange([]);
   }, [onSortingChange]);
 
-  // Handle changing which column a sort applies to
   const handleChangeSort = useCallback(
     (oldColumnId: string, newColumnId: string) => {
       onSortingChange(
@@ -68,7 +66,6 @@ export default function SortMenu({
     [sorting, onSortingChange],
   );
 
-  // Handle toggling sort direction
   const handleToggleSortDirection = useCallback(
     (columnId: string) => {
       onSortingChange(
@@ -108,16 +105,8 @@ export default function SortMenu({
       >
         <div className="mb-4 ml-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <h3 className="text-[13px] font-medium">Sort by</h3>
+            <h3 className="text-[13px] font-medium text-gray-500">Sort by</h3>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="mr-1 h-5 w-5 p-0"
-            onClick={() => setIsOpen(false)}
-          >
-            <X className="h-3 w-3" />
-          </Button>
         </div>
 
         <div className="space-y-2">
@@ -128,18 +117,18 @@ export default function SortMenu({
             return (
               <div
                 key={sort.id}
-                className="mx-2 flex items-center justify-between gap-2 rounded-sm border border-gray-200 p-2"
+                className="mx-2 flex items-center justify-between gap-2 px-1 py-2"
               >
-                <div className="grow-[4] basis-0">
+                <div className="grow-[4] basis-0 rounded-xs border border-gray-200">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-7 justify-between gap-2 text-xs"
+                        className="h-7 w-full justify-between gap-2 text-xs"
                       >
-                        {column.name}
-                        <ChevronDown className="h-3 w-3" />
+                        <p>{column.name}</p>
+                        <ChevronDown className="h-3 w-3 text-gray-500" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="w-[200px]">
@@ -165,13 +154,13 @@ export default function SortMenu({
                   </DropdownMenu>
                 </div>
 
-                <div className="grow-[2] basis-0">
+                <div className="grow-[2] basis-0 rounded-xs border border-gray-200">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-7 justify-between gap-2 text-xs"
+                        className="h-7 w-full justify-between gap-2 text-xs"
                       >
                         {column.type === "number"
                           ? sort.desc
@@ -180,7 +169,7 @@ export default function SortMenu({
                           : sort.desc
                             ? "Z → A"
                             : "A → Z"}
-                        <ChevronDown className="h-3 w-3" />
+                        <ChevronDown className="h-3 w-3 text-gray-500" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="w-[120px]">
@@ -220,7 +209,7 @@ export default function SortMenu({
                     handleRemoveSort(sort.id);
                   }}
                 >
-                  <X className="h-3 w-3" />
+                  <X className="h-3 w-3 text-gray-500" />
                 </Button>
               </div>
             );
@@ -228,19 +217,7 @@ export default function SortMenu({
         </div>
 
         {columns.length === 0 ? (
-          <div className="space-y-2">
-            {/* Skeleton loading state */}
-            <div className="flex items-center justify-between gap-2 rounded-sm border border-gray-200 p-2">
-              <div className="h-7 w-24 animate-pulse rounded bg-gray-200"></div>
-              <div className="h-7 w-16 animate-pulse rounded bg-gray-200"></div>
-              <div className="h-7 w-7 animate-pulse rounded bg-gray-200"></div>
-            </div>
-            <div className="flex items-center justify-between gap-2 rounded-sm border border-gray-200 p-2">
-              <div className="h-7 w-20 animate-pulse rounded bg-gray-200"></div>
-              <div className="h-7 w-16 animate-pulse rounded bg-gray-200"></div>
-              <div className="h-7 w-7 animate-pulse rounded bg-gray-200"></div>
-            </div>
-          </div>
+          <SortMenuLoadingState />
         ) : sorting.length === 0 ? (
           <div className="space-y-1">
             {sortableColumns.map((column) => (
@@ -270,8 +247,10 @@ export default function SortMenu({
                   ).length === 0
                 }
               >
-                <Plus className="h-3 w-3" />
-                <p className="text-[13px] font-normal">Add another sort</p>
+                <Plus className="h-3 w-3 text-gray-500" />
+                <p className="text-[13px] font-normal text-gray-500">
+                  Add another sort
+                </p>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-[200px]">
@@ -307,8 +286,10 @@ export default function SortMenu({
                 handleClearAll();
               }}
             >
-              <Trash2 className="h-3 w-3" />
-              <p className="text-[13px] font-normal">Clear all sorts</p>
+              <Trash2 className="h-3 w-3 text-gray-500" />
+              <p className="text-[13px] font-normal text-gray-500">
+                Clear all sorts
+              </p>
             </Button>
           </div>
         )}

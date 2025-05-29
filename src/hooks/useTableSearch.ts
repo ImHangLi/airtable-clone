@@ -8,8 +8,6 @@ interface UseTableSearchOptions {
 
 interface UseTableSearchReturn {
   searchValue: string;
-  debouncedSearchValue: string;
-  setSearchValue: (value: string) => void;
   clearSearch: () => void;
   handleInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
@@ -74,8 +72,6 @@ export function useTableSearch({
 
   return {
     searchValue,
-    debouncedSearchValue,
-    setSearchValue,
     clearSearch,
     handleInputChange,
     handleKeyDown,
