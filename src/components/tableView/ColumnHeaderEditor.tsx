@@ -2,6 +2,7 @@
 
 import { useCallback, useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
+import { Pencil, Trash2 } from "lucide-react";
 import {
   Form,
   FormControl,
@@ -10,7 +11,6 @@ import {
   FormMessage,
 } from "~/components/ui/form";
 import { Button } from "~/components/ui/button";
-import { DROPDOWN_STYLE } from "./constants";
 
 interface ColumnHeaderEditorProps {
   columnId: string;
@@ -19,6 +19,7 @@ interface ColumnHeaderEditorProps {
   onUpdateAction: (columnName: string) => Promise<void>;
   onDeleteAction: (columnId: string) => Promise<void>;
   onCloseAction: () => void;
+  isPrimary?: boolean;
 }
 
 export function ColumnHeaderEditor({
@@ -28,6 +29,7 @@ export function ColumnHeaderEditor({
   onUpdateAction,
   onDeleteAction,
   onCloseAction,
+  isPrimary,
 }: ColumnHeaderEditorProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -99,13 +101,18 @@ export function ColumnHeaderEditor({
   }, []);
 
   const handleDelete = useCallback(async () => {
+    // Don't allow deletion of primary columns
+    if (isPrimary) {
+      return;
+    }
+
     try {
       await onDeleteAction(columnId);
       onCloseAction();
     } catch (error) {
       console.error("Failed to delete column:", error);
     }
-  }, [onDeleteAction, columnId, onCloseAction]);
+  }, [onDeleteAction, columnId, onCloseAction, isPrimary]);
 
   const fieldValue = form.watch("name");
   const isFieldEmpty = !fieldValue?.trim();
@@ -119,21 +126,34 @@ export function ColumnHeaderEditor({
         style={{
           left: position.x,
           top: position.y,
-          ...DROPDOWN_STYLE,
+          width: "320px",
+          padding: "12px",
         }}
       >
-        <div className="py-1">
+        <div className="space-y-1">
           <button
             onClick={handleEdit}
-            className="w-full px-4 py-2 text-left text-[13px] hover:bg-gray-100 focus:bg-gray-100 focus:outline-none"
+            className="flex w-full items-center gap-4 rounded px-3 py-2 text-left text-[13px] hover:bg-gray-100 focus:bg-gray-100 focus:outline-none"
           >
-            Edit column
+            <Pencil className="h-3.5 w-3.5 text-gray-500" />
+            Edit field
           </button>
+
+          {/* Border separator */}
+          <div className="mx-3 border-t border-gray-200"></div>
+
           <button
             onClick={handleDelete}
-            className="w-full px-4 py-2 text-left text-[13px] text-red-600 hover:bg-red-50 focus:bg-red-50 focus:outline-none"
+            disabled={isPrimary}
+            className={`flex w-full items-center gap-4 rounded px-3 py-2 text-left text-[13px] ${
+              isPrimary
+                ? "cursor-not-allowed text-red-500"
+                : "text-red-500 hover:bg-red-50 focus:bg-red-50"
+            } focus:outline-none`}
+            title={isPrimary ? "Cannot delete primary field" : ""}
           >
-            Delete column
+            <Trash2 className="h-3.5 w-3.5 text-gray-500" />
+            Delete field
           </button>
         </div>
       </div>
@@ -144,11 +164,12 @@ export function ColumnHeaderEditor({
   return (
     <div
       ref={dropdownRef}
-      className="fixed z-50 rounded-md border border-gray-200 bg-white p-3 shadow-lg"
+      className="fixed z-50 rounded-md border border-gray-200 bg-white shadow-lg"
       style={{
         left: position.x,
         top: position.y,
-        ...DROPDOWN_STYLE,
+        width: "320px",
+        padding: "12px",
       }}
     >
       <Form {...form}>
@@ -189,7 +210,7 @@ export function ColumnHeaderEditor({
               type="submit"
               size="sm"
               disabled={isFieldEmpty}
-              className="text-[13px] disabled:cursor-not-allowed disabled:opacity-50"
+              className="h-8 w-16 bg-blue-600 text-[13px] font-normal text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Save
             </Button>

@@ -1,6 +1,6 @@
 // Types for table filtering functionality
 
-export interface FilterPreference {
+export interface FilterConfig {
   id: string;
   columnId: string;
   operator: FilterOperator;

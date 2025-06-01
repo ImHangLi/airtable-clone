@@ -11,7 +11,7 @@ import { Input } from "~/components/ui/input";
 import { cn } from "~/lib/utils";
 import { useDebounce } from "~/hooks/useDebounce";
 import type { TableColumn } from "~/hooks/useTableData";
-import type { FilterPreference } from "~/types/filtering";
+import type { FilterConfig } from "~/types/filtering";
 import {
   getAvailableOperators,
   formatOperatorName,
@@ -22,8 +22,8 @@ import type { ColumnHighlight } from "~/types/sorting";
 
 interface FilterMenuProps {
   columns: TableColumn[];
-  filtering?: FilterPreference[];
-  onFilteringChange: (filtering: FilterPreference[]) => void;
+  filtering?: FilterConfig[];
+  onFilteringChange: (filtering: FilterConfig[]) => void;
   onHighlightChange?: (highlights: ColumnHighlight[]) => void;
 }
 
@@ -116,10 +116,10 @@ export default function FilterMenu({
           ? (lastFilter?.logicalOperator ?? "and")
           : undefined;
 
-      const newFilter: FilterPreference = {
+      const newFilter: FilterConfig = {
         id: crypto.randomUUID(),
         columnId,
-        operator: defaultOperator as FilterPreference["operator"],
+        operator: defaultOperator as FilterConfig["operator"],
         value: "",
         order: newFiltering.length,
         logicalOperator: newFiltering.length > 0 ? logicalOperator : undefined,
@@ -153,7 +153,7 @@ export default function FilterMenu({
           return {
             ...filter,
             columnId: newColumnId,
-            operator: defaultOperator as FilterPreference["operator"],
+            operator: defaultOperator as FilterConfig["operator"],
             value: "", // Reset value when changing column
           };
         }
@@ -171,7 +171,7 @@ export default function FilterMenu({
   );
 
   const handleChangeFilterOperator = useCallback(
-    (filterId: string, newOperator: FilterPreference["operator"]) => {
+    (filterId: string, newOperator: FilterConfig["operator"]) => {
       const newFiltering = (filtering || []).map((filter) => {
         if (filter.id === filterId) {
           return {
@@ -235,6 +235,7 @@ export default function FilterMenu({
               ? "bg-[#CFF5D1] text-gray-700 hover:shadow-[inset_0px_0px_0px_2px_rgba(0,0,0,0.1)]"
               : "text-gray-700 hover:bg-gray-100",
           )}
+          title="Filter button"
         >
           <Filter className="h-4 w-4" />
           {appliedFilters.length === 0

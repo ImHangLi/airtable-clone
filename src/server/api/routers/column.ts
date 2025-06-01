@@ -9,11 +9,23 @@ import {
   type SortDirection,
 } from "~/server/db/schema";
 import { randomUUID } from "crypto";
-import {
-  updateColumnSchema,
-  addColumnSchema,
-  deleteColumnSchema,
-} from "./shared/types";
+import { z } from "zod";
+
+// Column-related schemas
+export const updateColumnSchema = z.object({
+  columnId: z.string().uuid("Invalid column ID"),
+  name: z.string().min(1, "Column name is required"),
+});
+
+export const deleteColumnSchema = z.object({
+  columnId: z.string().uuid("Invalid column ID"),
+});
+
+export const addColumnSchema = z.object({
+  tableId: z.string().uuid("Invalid table ID"),
+  name: z.string().min(1, "Column name is required"),
+  type: z.enum(["text", "number"]),
+});
 
 // Global map to track background processes for cancellation
 const backgroundProcesses = new Map<string, { cancelled: boolean }>();
@@ -44,6 +56,27 @@ export const columnRouter = createTRPCRouter({
     .input(deleteColumnSchema)
     .mutation(async ({ ctx, input }): Promise<{ success: boolean }> => {
       try {
+        // Check if this is a primary column first
+        const [column] = await ctx.db
+          .select({ is_primary: columns.is_primary, name: columns.name })
+          .from(columns)
+          .where(eq(columns.id, input.columnId))
+          .limit(1);
+
+        if (!column) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Column not found",
+          });
+        }
+
+        if (column.is_primary) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Cannot delete primary field",
+          });
+        }
+
         // Cancel any background processing for this column
         const processControl = backgroundProcesses.get(input.columnId);
         if (processControl) {
@@ -62,6 +95,9 @@ export const columnRouter = createTRPCRouter({
         return { success: true };
       } catch (error) {
         console.error("Error deleting column:", error);
+        if (error instanceof TRPCError) {
+          throw error;
+        }
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to delete column",

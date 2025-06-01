@@ -4,11 +4,22 @@ import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { columns, rows, cells } from "~/server/db/schema";
 import { randomUUID } from "crypto";
 import { faker } from "@faker-js/faker";
-import {
-  createRowSchema,
-  deleteRowSchema,
-  addManyRowsSchema,
-} from "./shared/types";
+import { z } from "zod";
+
+// Row-related schemas
+export const createRowSchema = z.object({
+  tableId: z.string().uuid("Invalid table ID"),
+  baseId: z.string().uuid("Invalid base ID"),
+});
+
+export const deleteRowSchema = z.object({
+  rowId: z.string().uuid("Invalid row ID"),
+});
+
+export const addManyRowsSchema = z.object({
+  tableId: z.string().uuid("Invalid table ID"),
+  baseId: z.string().uuid("Invalid base ID"),
+});
 
 export const rowRouter = createTRPCRouter({
   // Create a new row with empty string cells

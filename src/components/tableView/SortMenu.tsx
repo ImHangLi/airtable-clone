@@ -103,6 +103,7 @@ export default function SortMenu({
               ? "bg-[#FFE0CC] text-gray-700 hover:border-rose-200 hover:shadow-[inset_0px_0px_0px_2px_rgba(0,0,0,0.1)]"
               : "text-gray-700 hover:bg-gray-100",
           )}
+          title="Sort button"
         >
           <ArrowUpDown className="h-4 w-4" />
           {sorting.length === 0

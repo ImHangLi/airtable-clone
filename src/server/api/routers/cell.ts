@@ -1,8 +1,35 @@
 import { eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { columns, cells } from "~/server/db/schema";
-import { updateCellSchema, getCellValue } from "./shared/types";
+import { columns, cells, type ColumnType } from "~/server/db/schema";
+import { z } from "zod";
+
+// Cell-related schema and utility function
+export const updateCellSchema = z.object({
+  rowId: z.string().uuid("Invalid row ID"),
+  columnId: z.string().uuid("Invalid column ID"),
+  value: z.union([z.string(), z.number()]),
+  baseId: z.string().uuid("Invalid base ID"),
+});
+
+export async function getCellValue(
+  columnType: ColumnType,
+  value: string | number,
+) {
+  if (columnType === "text") {
+    return {
+      value_text: value === "" ? null : String(value),
+      value_number: null,
+    };
+  } else if (columnType === "number") {
+    return {
+      value_text: null,
+      value_number: value === "" ? null : Number(value),
+    };
+  }
+
+  throw new Error("Unsupported column type");
+}
 
 export const cellRouter = createTRPCRouter({
   // Update a cell value
