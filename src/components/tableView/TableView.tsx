@@ -5,6 +5,7 @@ import {
   useReactTable,
   getCoreRowModel,
   flexRender,
+  type VisibilityState,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useCallback, useState, useMemo, useEffect, useRef } from "react";
@@ -16,18 +17,23 @@ import type {
   TableColumn,
 } from "~/hooks/useTableData";
 import type { ColumnHighlight } from "~/types/sorting";
+import type { SearchMatch } from "~/hooks/useTableSearch";
 
 import { RowNumberCell } from "./RowNumberCell";
 import { ColumnHeaderEditor } from "./ColumnHeaderEditor";
-import { SimpleContextMenu } from "./SimpleContextMenu";
+import { RowContextMenu } from "./RowContextMenu";
 import { createCellRenderer } from "./cellRenderers";
 import { CELL_CONFIG, baseCellStyle } from "./constants";
+import { useSearchScrolling } from "~/hooks/useSearchScrolling";
 
 interface TableViewProps {
   tableData: TableData;
   tableActions: TableActions;
   onSavingStateChange?: (savingStatus: string | null) => void;
   highlights?: ColumnHighlight[];
+  hiddenColumns: string[];
+  searchMatches?: SearchMatch[];
+  currentTargetMatch?: SearchMatch | null;
 }
 
 const getCellWidth = (isRowNumber = false) => ({
@@ -42,6 +48,9 @@ export default function TableView({
   tableActions,
   onSavingStateChange,
   highlights,
+  hiddenColumns = [],
+  searchMatches = [],
+  currentTargetMatch = null,
 }: TableViewProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [editingCell, setEditingCell] = useState<{
@@ -74,6 +83,21 @@ export default function TableView({
     position: { x: 0, y: 0 },
   });
 
+  // Hidden columns state
+  const columnVisibility = useMemo(() => {
+    const visibility: VisibilityState = {
+      // Always show row number column
+      rowNumber: true,
+    };
+
+    // Show all columns that are not hidden
+    tableData.columns.forEach((column) => {
+      visibility[column.id] = !hiddenColumns.includes(column.id);
+    });
+
+    return visibility;
+  }, [tableData.columns, hiddenColumns]);
+
   // Notify parent when saving state changes
   useEffect(() => {
     onSavingStateChange?.(savingStatus);
@@ -93,6 +117,55 @@ export default function TableView({
     },
     [highlights],
   );
+
+  // Helper function to get search highlight style
+  const getSearchHighlightStyle = useCallback(
+    (rowId: string, columnId: string): React.CSSProperties => {
+      if (!searchMatches || searchMatches.length === 0) return {};
+
+      const searchMatch = searchMatches.find(
+        (match) => match.rowId === rowId && match.columnId === columnId,
+      );
+
+      if (!searchMatch) return {};
+
+      return {
+        backgroundColor: searchMatch.isCurrentTarget ? "#f1cf6b" : "#fff3d3",
+      };
+    },
+    [searchMatches],
+  );
+
+  // Combined highlight style that prioritizes search over sort/filter
+  const getCombinedHighlightStyle = useCallback(
+    (rowId: string, columnId: string): React.CSSProperties => {
+      const searchStyle = getSearchHighlightStyle(rowId, columnId);
+      const cellStyle = getCellHighlightStyle(columnId);
+
+      // Search highlighting takes priority over sort/filter highlighting
+      return searchStyle.backgroundColor ? searchStyle : cellStyle;
+    },
+    [getSearchHighlightStyle, getCellHighlightStyle],
+  );
+
+  // Virtual row renderer
+  const rowVirtualizer = useVirtualizer({
+    count: tableData.rows.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => CELL_CONFIG.height,
+    overscan: 20,
+  });
+
+  // Search scrolling functionality - moved after rowVirtualizer definition
+  const { scrollToMatch: _scrollToMatch } = useSearchScrolling({
+    currentTargetMatch,
+    tableRows: tableData.rows,
+    parentRef: parentRef as React.RefObject<HTMLDivElement>,
+    rowVirtualizer,
+    rowHeight: CELL_CONFIG.height,
+  });
+
+  // Note: _scrollToMatch is available for manual scrolling if needed
 
   // Memoized update function for table meta
   const updateData = useCallback(
@@ -215,6 +288,13 @@ export default function TableView({
     async (columnId: string) => {
       handleColumnEditorClose();
 
+      // Check if this is a primary column
+      const column = tableData.columns.find((col) => col.id === columnId);
+      if (column?.is_primary) {
+        toast.error("Cannot delete primary field");
+        return;
+      }
+
       setSavingStatus("Deleting column...");
       try {
         const success = await tableActions.deleteColumn(columnId);
@@ -228,7 +308,7 @@ export default function TableView({
         setSavingStatus(null);
       }
     },
-    [handleColumnEditorClose, tableActions],
+    [handleColumnEditorClose, tableActions, tableData.columns],
   );
 
   // Memoized cell renderers
@@ -254,21 +334,18 @@ export default function TableView({
     [handleColumnHeaderRightClick],
   );
 
-  // Generate table columns configuration
-  const tableColumns = useMemo(() => {
+  // Create table columns with enhanced meta
+  const tableColumns: ColumnDef<TableRow>[] = useMemo(() => {
     const columns: ColumnDef<TableRow>[] = [
-      // Row number column
       {
         id: "rowNumber",
         header: "",
         cell: ({ row }) => <RowNumberCell rowIndex={row.index} />,
         size: CELL_CONFIG.rowNumberWidth,
-        enableGlobalFilter: false,
       },
-      // Data columns
       ...tableData.columns.map((column: TableColumn) => ({
-        accessorKey: column.id,
         id: column.id,
+        accessorKey: `cells.${column.id}`,
         header: createHeaderRenderer(column.id, column.name),
         accessorFn: (row: TableRow) => row.cells[column.id],
         cell: column.type === "text" ? textCellRenderer : numberCellRenderer,
@@ -284,24 +361,19 @@ export default function TableView({
     numberCellRenderer,
   ]);
 
-  // TanStack Table instance (no client-side filtering)
+  // TanStack Table instance with enhanced meta
   const table = useReactTable({
     data: tableData.rows,
     columns: tableColumns,
     getCoreRowModel: getCoreRowModel(),
+    state: {
+      columnVisibility,
+    },
     meta: {
       updateData,
       editingCell,
       setEditingCell,
     },
-  });
-
-  // Virtual row renderer
-  const rowVirtualizer = useVirtualizer({
-    count: tableData.rows.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => CELL_CONFIG.height,
-    overscan: 20,
   });
 
   const fetchMoreOnBottomReached = useCallback(
@@ -335,11 +407,14 @@ export default function TableView({
   );
 
   const totalColumnWidth = useMemo(() => {
+    const visibleColumns = tableData.columns.filter(
+      (column) => columnVisibility[column.id],
+    );
     return (
       CELL_CONFIG.rowNumberWidth +
-      tableData.columns.length * CELL_CONFIG.defaultWidth
+      visibleColumns.length * CELL_CONFIG.defaultWidth
     );
-  }, [tableData.columns.length]);
+  }, [tableData.columns, columnVisibility]);
 
   return (
     <div className="relative flex-1 overflow-hidden bg-gray-50">
@@ -431,7 +506,10 @@ export default function TableView({
                           style={{
                             ...baseCellStyle,
                             ...getCellWidth(cell.column.id === "rowNumber"),
-                            ...getCellHighlightStyle(cell.column.id),
+                            ...getCombinedHighlightStyle(
+                              row.original.id,
+                              cell.column.id,
+                            ),
                             borderRight: isEditing
                               ? "1px solid #186ce4"
                               : "1px solid #cccccc",
@@ -484,7 +562,7 @@ export default function TableView({
 
       {/* Simple Context Menu */}
       {contextMenu.isOpen && contextMenu.rowId && (
-        <SimpleContextMenu
+        <RowContextMenu
           isOpen={contextMenu.isOpen}
           position={contextMenu.position}
           rowId={contextMenu.rowId}
@@ -504,6 +582,10 @@ export default function TableView({
             onUpdateAction={handleColumnUpdate}
             onCloseAction={handleColumnEditorClose}
             onDeleteAction={handleColumnDelete}
+            isPrimary={
+              tableData.columns.find((col) => col.id === columnEditor.columnId)
+                ?.is_primary ?? false
+            }
           />
         )}
     </div>

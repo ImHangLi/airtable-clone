@@ -1,15 +1,6 @@
-import {
-  ChevronDown,
-  Eye,
-  Grid,
-  Group,
-  Menu,
-  Plus,
-  Database,
-  Loader2,
-} from "lucide-react";
+import { ChevronDown, Grid, Menu, Plus, Database, Loader2 } from "lucide-react";
 import { Button } from "../ui/button";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, memo } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { api } from "~/trpc/react";
@@ -29,22 +20,35 @@ import type { TableActions, TableData } from "~/hooks/useTableData";
 import { SearchInput } from "./SearchInput";
 import SortMenu from "./SortMenu";
 import FilterMenu from "./FilterMenu";
-import type { FilterPreference } from "~/types/filtering";
+import HiddenColumnsMenu from "./HiddenColumnsMenu";
+import type { FilterConfig } from "~/types/filtering";
 import type { SortConfig, ColumnHighlight } from "~/types/sorting";
+import type { SearchNavigationState } from "~/hooks/useTableSearch";
+import { useViewData } from "~/hooks/useViewData";
+import { useViewActions } from "~/hooks/useViewActions";
+import { ViewContextMenu } from "./ViewContextMenu";
 
 interface ViewControlProps {
   tableId: string;
   baseId: string;
+  currentViewId: string;
   tableActions: TableActions;
   tableData?: TableData;
   loadingStatus?: string | null;
   setSearchQuery: (query: string) => void;
   sorting: SortConfig[];
   onSortingChange: (sorting: SortConfig[]) => void;
-  filtering: FilterPreference[];
-  onFilteringChange: (filtering: FilterPreference[]) => void;
+  filtering: FilterConfig[];
+  onFilteringChange: (filtering: FilterConfig[]) => void;
   onSortHighlightChange?: (highlights: ColumnHighlight[]) => void;
   onFilterHighlightChange?: (highlights: ColumnHighlight[]) => void;
+  hiddenColumns: string[];
+  onSetHiddenColumns: (columns: string[]) => void;
+  onShowAllColumns: () => void;
+  onHideAllColumns: () => void;
+  isViewSideOpen: boolean;
+  onToggleViewSide: () => void;
+  onSearchMatches?: (navigationState: SearchNavigationState) => void;
 }
 
 // Add column form component
@@ -151,9 +155,10 @@ function AddColumnForm({
             </Button>
             <Button
               type="submit"
+              variant="outline"
               size="sm"
               disabled={isFieldEmpty}
-              className="disabled:cursor-not-allowed disabled:opacity-50"
+              className="h-8 w-24 bg-blue-600 text-[13px] font-normal text-white hover:bg-blue-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               Add Column
             </Button>
@@ -164,9 +169,10 @@ function AddColumnForm({
   );
 }
 
-export default function ViewControl({
+export default memo(function ViewControl({
   tableId,
   baseId,
+  currentViewId,
   tableActions,
   tableData,
   loadingStatus = null,
@@ -177,19 +183,46 @@ export default function ViewControl({
   onFilteringChange,
   onSortHighlightChange,
   onFilterHighlightChange,
+  hiddenColumns,
+  onSetHiddenColumns,
+  onShowAllColumns,
+  onHideAllColumns,
+  isViewSideOpen,
+  onToggleViewSide,
+  onSearchMatches,
 }: ViewControlProps) {
   const [isAddColumnOpen, setIsAddColumnOpen] = useState(false);
   const [isAddingManyRows, setIsAddingManyRows] = useState(false);
   const utils = api.useUtils();
+
+  // Use the view data hook for current view info
+  const { viewData: currentView } = useViewData({
+    viewId: currentViewId,
+    tableId,
+  });
+
+  // Use the view actions hook for all view management
+  const {
+    contextMenu,
+    canDeleteView,
+    handleShowContextMenu,
+    handleCloseContextMenu,
+    handleUpdateViewName,
+    handleDeleteView,
+  } = useViewActions({
+    tableId,
+    baseId,
+    currentViewId,
+  });
 
   // Add many rows mutation
   const addManyRowsMutation = api.row.addManyRows.useMutation({
     onSuccess: () => {
       setIsAddingManyRows(false);
       toast.success("Successfully added 100k rows!");
-      // Invalidate and refetch the table data
+      // Invalidate all queries for this table to refresh data across all views
       void utils.data.getInfiniteTableData.invalidate({
-        tableId: tableData?.name ?? "",
+        tableId,
       });
     },
     onError: (error) => {
@@ -234,8 +267,11 @@ export default function ViewControl({
         <Button
           variant="ghost"
           size="sm"
-          className="h-8 gap-1.5 rounded bg-gray-100 px-2 text-sm font-normal text-gray-700"
-          title="Views button"
+          className={`h-8 gap-1.5 rounded px-2 text-sm font-normal text-gray-700 ${
+            isViewSideOpen ? "bg-gray-100" : "hover:bg-gray-100"
+          }`}
+          title="Toggle views sidebar"
+          onClick={onToggleViewSide}
         >
           <Menu className="h-4 w-4" />
           <span className="text-[13px] text-black">Views</span>
@@ -246,24 +282,29 @@ export default function ViewControl({
             variant="ghost"
             size="sm"
             className="h-8 gap-1.5 rounded px-2 text-sm font-normal text-gray-700 hover:bg-gray-100"
-            title="Grid view button"
+            title="Current view - right click to rename or delete"
+            onClick={(e) => {
+              if (currentView) {
+                handleShowContextMenu(e, currentView.id, currentView.name);
+              }
+            }}
           >
             <Grid className="h-4 w-4 text-blue-600" />
-            <span className="text-[13px] text-black">Grid view</span>
+            <span className="text-[13px] text-black">
+              {currentView?.name ?? "Grid view"}
+            </span>
             <ChevronDown className="h-4 w-4" />
           </Button>
         </div>
 
         <div className="flex items-center gap-0.5">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1.5 rounded px-2 text-sm font-normal text-gray-700 hover:bg-gray-100"
-            title="Hide fields button"
-          >
-            <Eye className="h-4 w-4" />
-            <p className="hidden text-[13px] md:block">Hide fields</p>
-          </Button>
+          <HiddenColumnsMenu
+            columns={tableData?.columns ?? []}
+            hiddenColumns={hiddenColumns}
+            onSetHiddenColumns={onSetHiddenColumns}
+            onShowAllColumns={onShowAllColumns}
+            onHideAllColumns={onHideAllColumns}
+          />
 
           <FilterMenu
             columns={tableData?.columns ?? []}
@@ -271,15 +312,6 @@ export default function ViewControl({
             onFilteringChange={onFilteringChange}
             onHighlightChange={onFilterHighlightChange}
           />
-
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1.5 rounded px-2 text-sm font-normal text-gray-700 hover:bg-gray-100"
-          >
-            <Group className="h-4 w-4" />
-            <p className="hidden text-[13px] md:block">Group</p>
-          </Button>
 
           <SortMenu
             columns={tableData?.columns ?? []}
@@ -385,8 +417,27 @@ export default function ViewControl({
             </div>
           )}
 
-        <SearchInput onChange={setSearchQuery} disabled={!!loadingStatus} />
+        <SearchInput
+          onChange={setSearchQuery}
+          disabled={!!loadingStatus}
+          tableRows={tableData?.rows ?? []}
+          tableColumns={tableData?.columns ?? []}
+          onSearchMatches={onSearchMatches}
+        />
       </div>
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <ViewContextMenu
+          viewId={contextMenu.viewId}
+          initialName={contextMenu.viewName}
+          position={contextMenu.position}
+          onUpdateAction={handleUpdateViewName}
+          onDeleteAction={handleDeleteView}
+          onCloseAction={handleCloseContextMenu}
+          canDelete={canDeleteView}
+        />
+      )}
     </div>
   );
-}
+});
