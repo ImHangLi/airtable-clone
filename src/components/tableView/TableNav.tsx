@@ -1,71 +1,459 @@
 import { Plus, ChevronDown } from "lucide-react";
 import { Button } from "../ui/button";
+import { useCallback, useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { api } from "~/trpc/react";
+import { toast } from "sonner";
+import { TableContextMenu } from "./TableContextMenu";
+import { setLastViewedTable } from "~/utils/lastViewedTable";
+import { setLastViewedView, getLastViewedView } from "~/utils/lastViewedView";
+import { useTableActions } from "~/hooks/useTableActions";
+import { useForm } from "react-hook-form";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormMessage,
+} from "../ui/form";
 
 interface TableNavProps {
   darkerColor: string;
+  baseId: string;
+  currentTableId: string;
 }
 
-export default function TableNav({ darkerColor }: TableNavProps) {
-  // Common styles for better maintainability
+export default function TableNav({
+  darkerColor,
+  baseId,
+  currentTableId,
+}: TableNavProps) {
+  const router = useRouter();
+  const utils = api.useUtils();
+  const formRef = useRef<HTMLDivElement>(null);
+
+  // State management with persistence
+  const [isAddingTable, setIsAddingTable] = useState(() => {
+    if (typeof window !== "undefined") {
+      const savedState = sessionStorage.getItem(`addingTable_${baseId}`);
+      return savedState === "true";
+    }
+    return false;
+  });
+
+  const form = useForm({
+    defaultValues: {
+      name:
+        typeof window !== "undefined"
+          ? (sessionStorage.getItem(`newTableName_${baseId}`) ?? "")
+          : "",
+    },
+  });
+
+  const {
+    tables,
+    currentTable,
+    contextMenu,
+    canDeleteTable,
+    handleShowContextMenu,
+    handleCloseContextMenu,
+    handleUpdateTableName,
+    handleDeleteTable,
+  } = useTableActions({ baseId, currentTableId });
+
+  const { isLoading } = api.table.getTablesByBase.useQuery(
+    { baseId },
+    {
+      enabled: !!baseId,
+      refetchOnWindowFocus: false,
+    },
+  );
+
+  // Persistence helper
+  const persistFormState = useCallback(
+    (showForm: boolean, tableName = "") => {
+      if (typeof window !== "undefined") {
+        if (showForm) {
+          sessionStorage.setItem(`addingTable_${baseId}`, "true");
+          sessionStorage.setItem(`newTableName_${baseId}`, tableName);
+        } else {
+          sessionStorage.removeItem(`addingTable_${baseId}`);
+          sessionStorage.removeItem(`newTableName_${baseId}`);
+        }
+      }
+    },
+    [baseId],
+  );
+
+  // Mutations
+  const createTableMutation = api.table.createTable.useMutation({
+    onMutate: async ({ name }) => {
+      await utils.table.getTablesByBase.cancel({ baseId });
+
+      const previousTables = utils.table.getTablesByBase.getData({ baseId });
+      const tempId = `temp-${Date.now()}`;
+      const tempTable = {
+        id: tempId,
+        name,
+        base_id: baseId,
+        created_at: new Date(),
+        updated_at: new Date(),
+      };
+
+      utils.table.getTablesByBase.setData({ baseId }, (old) =>
+        old ? [...old, tempTable] : [tempTable],
+      );
+
+      return { previousTables, tempTable, tempId };
+    },
+    onSuccess: (newTableData, variables, context) => {
+      utils.table.getTablesByBase.setData({ baseId }, (old) => {
+        if (!old) return old;
+        return old.map((table) =>
+          table.id === context?.tempId ? newTableData.table : table,
+        );
+      });
+
+      toast.success("Table created successfully");
+
+      if (newTableData?.table?.id && newTableData?.view?.id) {
+        const navigationUrl = `/${baseId}/${newTableData.table.id}/${newTableData.view.id}`;
+
+        setLastViewedTable(baseId, newTableData.table.id);
+        setLastViewedView(newTableData.table.id, newTableData.view.id);
+
+        router.push(navigationUrl);
+      }
+    },
+    onError: (error, _, context) => {
+      if (context?.previousTables) {
+        utils.table.getTablesByBase.setData({ baseId }, context.previousTables);
+      }
+      toast.error(`Failed to create table: ${error.message}`);
+    },
+  });
+
+  const updateTableNameMutation = api.table.updateTableName.useMutation({
+    onMutate: async ({ tableId, name }) => {
+      await utils.table.getTablesByBase.cancel({ baseId });
+
+      const previousTables = utils.table.getTablesByBase.getData({ baseId });
+
+      utils.table.getTablesByBase.setData({ baseId }, (old) => {
+        if (!old) return old;
+        return old.map((table) =>
+          table.id === tableId ? { ...table, name } : table,
+        );
+      });
+
+      return { previousTables };
+    },
+    onSuccess: () => {
+      toast.success("Table renamed successfully");
+    },
+    onError: (error, variables, context) => {
+      // Rollback optimistic update on error
+      if (context?.previousTables) {
+        utils.table.getTablesByBase.setData({ baseId }, context.previousTables);
+      }
+      toast.error(`Failed to rename table: ${error.message}`);
+      // Invalidate to ensure fresh data after error
+      void utils.table.getTablesByBase.invalidate({ baseId });
+    },
+    onSettled: () => {
+      // Ensure data is fresh after mutation completes
+      void utils.table.getTablesByBase.invalidate({ baseId });
+    },
+  });
+
+  // Helper functions
+  const getDefaultTableName = useCallback(() => {
+    if (!tables.length) return "Table 1";
+
+    const numberTables = tables.filter((table) => {
+      return /^Table \d+$/.test(table.name);
+    });
+
+    if (numberTables.length === 0) return "Table 1";
+
+    let maxNumber = 0;
+    numberTables.forEach((table) => {
+      const match = /^Table (\d+)$/.exec(table.name);
+      if (match) {
+        const num = parseInt(match[1] ?? "0", 10);
+        if (num > maxNumber) maxNumber = num;
+      }
+    });
+
+    return `Table ${maxNumber + 1}`;
+  }, [tables]);
+
+  // Event handlers
+  const handleAddTable = useCallback(() => {
+    const defaultName = getDefaultTableName();
+
+    form.reset({ name: defaultName });
+    setIsAddingTable(true);
+    persistFormState(true, defaultName);
+
+    createTableMutation.mutate({
+      name: defaultName,
+      baseId,
+    });
+  }, [
+    getDefaultTableName,
+    form,
+    createTableMutation,
+    baseId,
+    persistFormState,
+  ]);
+
+  const handleCreateTable = useCallback(
+    async (data: { name: string }) => {
+      const trimmedName = data.name.trim();
+      if (!trimmedName) return;
+
+      setIsAddingTable(false);
+      persistFormState(false);
+
+      const mostRecentTable = tables[tables.length - 1];
+      if (mostRecentTable && mostRecentTable.name !== trimmedName) {
+        updateTableNameMutation.mutate({
+          tableId: mostRecentTable.id,
+          name: trimmedName,
+        });
+      }
+    },
+    [tables, updateTableNameMutation, persistFormState],
+  );
+
+  const handleCancelAdd = useCallback(() => {
+    setIsAddingTable(false);
+    form.reset({ name: "" });
+    persistFormState(false);
+  }, [form, persistFormState]);
+
+  const handleTableClick = useCallback(
+    (tableId: string) => {
+      if (tableId.startsWith("temp-")) return;
+
+      const lastViewedViewId = getLastViewedView(tableId);
+
+      if (lastViewedViewId) {
+        setLastViewedTable(baseId, tableId);
+        router.push(`/${baseId}/${tableId}/${lastViewedViewId}`);
+      } else {
+        utils.table.getTableDefaultView
+          .fetch({ tableId })
+          .then((data) => {
+            if (data) {
+              setLastViewedTable(baseId, tableId);
+              setLastViewedView(tableId, data.view.id);
+              router.push(`/${baseId}/${tableId}/${data.view.id}`);
+            }
+          })
+          .catch((error) => {
+            console.error("Failed to get table default view:", error);
+            setLastViewedTable(baseId, tableId);
+            router.push(`/${baseId}/${tableId}`);
+          });
+      }
+    },
+    [router, baseId, utils.table.getTableDefaultView],
+  );
+
+  const handleTableRightClick = useCallback(
+    (e: React.MouseEvent, tableId: string, tableName: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handleShowContextMenu(e, tableId, tableName);
+    },
+    [handleShowContextMenu],
+  );
+
+  // Effects
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedName = sessionStorage.getItem(`newTableName_${baseId}`);
+      if (savedName && isAddingTable) {
+        form.reset({ name: savedName });
+      }
+    }
+  }, [baseId, isAddingTable, form]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        formRef.current &&
+        !formRef.current.contains(event.target as Node) &&
+        isAddingTable
+      ) {
+        handleCancelAdd();
+      }
+    };
+
+    if (isAddingTable) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isAddingTable, handleCancelAdd]);
+
+  // Render helpers
   const buttonBaseClasses =
     "relative gap-1 rounded-none rounded-t-[3px] px-3 text-[13px] leading-[18px] font-normal";
   const inactiveTextColor = "text-[rgba(255,255,255,0.85)]";
   const separatorClasses = "h-[12px] w-px bg-[#ffffff26]";
+
+  const displayTables =
+    isLoading && tables.length === 0
+      ? [
+          {
+            id: currentTableId,
+            name: currentTable?.name ?? "Table 1",
+            base_id: baseId,
+            created_at: new Date(),
+            updated_at: new Date(),
+          },
+        ]
+      : tables;
 
   return (
     <div
       className="relative flex min-h-8 items-center overflow-hidden border-gray-200"
       style={{ backgroundColor: darkerColor }}
     >
-      {/* Active Table Tab */}
       <div className="flex items-center pl-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          className={`${buttonBaseClasses} cursor-pointer bg-white hover:bg-white`}
-        >
-          <span className="truncate text-[13px] text-black">Table 1</span>
-          <ChevronDown className="h-4 w-4" />
-        </Button>
+        {displayTables.map((table) => {
+          const isActive = table.id === currentTableId;
+          const isTemp = table.id.startsWith("temp-");
+
+          return (
+            <Button
+              key={table.id}
+              variant="ghost"
+              size="sm"
+              className={`${buttonBaseClasses} cursor-pointer ${
+                isActive
+                  ? "bg-white text-black hover:bg-white"
+                  : `${inactiveTextColor} hover:bg-[#4E535B] hover:text-[rgba(255,255,255,0.95)]`
+              }`}
+              style={{ backgroundColor: isActive ? "white" : darkerColor }}
+              onClick={() => !isTemp && handleTableClick(table.id)}
+              onContextMenu={(e) =>
+                !isTemp && handleTableRightClick(e, table.id, table.name)
+              }
+              disabled={isTemp}
+            >
+              <span
+                className={`truncate text-[13px] ${isActive ? "text-black" : "text-[rgba(255,255,255,0.85)]"}`}
+              >
+                {table.name}
+              </span>
+              {isActive && <ChevronDown className="h-4 w-4" />}
+            </Button>
+          );
+        })}
       </div>
 
-      {/* Inactive Table Tab */}
-      <Button
-        variant="ghost"
-        size="sm"
-        className={`${buttonBaseClasses} ${inactiveTextColor} hover:bg-[#4E535B] hover:text-[rgba(255,255,255,0.95)]`}
-        style={{ backgroundColor: darkerColor }}
-      >
-        <span className="truncate text-[13px] text-[rgba(255,255,255,0.85)]">
-          Table 2
-        </span>
-      </Button>
-
-      {/* Separator */}
       <div className={separatorClasses} />
 
-      {/* Dropdown Button */}
       <Button
         variant="ghost"
         size="sm"
-        className={`h-8 rounded-none px-3 ${inactiveTextColor} hover:text-[rgba(255,255,255,0.95)]`}
+        className={`${buttonBaseClasses} ${inactiveTextColor} min-w-fit hover:text-[rgba(255,255,255,0.95)]`}
         style={{ backgroundColor: darkerColor }}
-      >
-        <ChevronDown className="h-3.5 w-3.5" />
-      </Button>
-
-      {/* Separator */}
-      <div className={separatorClasses} />
-
-      {/* Add Table Button */}
-      <Button
-        variant="ghost"
-        size="sm"
-        className={`${buttonBaseClasses} ${inactiveTextColor} hover:text-[rgba(255,255,255,0.95)]`}
-        style={{ backgroundColor: darkerColor }}
+        onClick={handleAddTable}
+        title="Add table"
+        disabled={createTableMutation.isPending}
       >
         <Plus className="h-3.5 w-3.5" />
       </Button>
+
+      {contextMenu && (
+        <TableContextMenu
+          tableId={contextMenu.tableId}
+          initialName={contextMenu.tableName}
+          position={contextMenu.position}
+          onUpdateAction={handleUpdateTableName}
+          onDeleteAction={handleDeleteTable}
+          onCloseAction={handleCloseContextMenu}
+          canDelete={canDeleteTable}
+        />
+      )}
+
+      {isAddingTable && (
+        <div
+          ref={formRef}
+          className="fixed z-50 rounded-md border border-gray-200 bg-white shadow-lg"
+          style={{
+            left: "200px",
+            top: "90px",
+            width: "320px",
+            padding: "12px",
+          }}
+        >
+          <Form {...form}>
+            <form
+              onSubmit={form.handleSubmit(handleCreateTable)}
+              className="space-y-4"
+            >
+              <FormField
+                control={form.control}
+                name="name"
+                rules={{
+                  required: "Please enter a non-empty table name",
+                  validate: (value) =>
+                    value.trim() !== "" ||
+                    "Please enter a non-empty table name",
+                }}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <input
+                        {...field}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          const value = e.target.value;
+                          persistFormState(true, value);
+                        }}
+                        className="w-full rounded border border-gray-200 px-3 py-2 text-[13px] focus:border-blue-400 focus:ring-2 focus:ring-blue-400 focus:outline-none"
+                        placeholder="Table name"
+                        autoFocus
+                      />
+                    </FormControl>
+                    <FormMessage className="text-xs text-red-500" />
+                  </FormItem>
+                )}
+              />
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCancelAdd}
+                  className="text-[13px]"
+                  disabled={createTableMutation.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={
+                    !form.watch("name")?.trim() || createTableMutation.isPending
+                  }
+                  className="h-8 w-16 bg-blue-600 text-[13px] font-normal text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {createTableMutation.isPending ? "Creating..." : "Create"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </div>
+      )}
     </div>
   );
 }

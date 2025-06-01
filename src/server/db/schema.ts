@@ -15,6 +15,8 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import type { SortConfig } from "~/types/sorting";
+import type { FilterConfig } from "~/types/filtering";
 
 /**
  * Multi-project schema setup for Drizzle ORM
@@ -35,6 +37,7 @@ const timeStamps = {
 // Core Tables
 export const users = createTable("users", {
   id: text("id").primaryKey().notNull(), // Clerk user ID
+  created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const bases = createTable("bases", {
@@ -68,6 +71,7 @@ export const columns = createTable("columns", {
   type: columnTypeEnum("type").notNull(),
   position: doublePrecision("position").notNull().default(0),
   is_visible: boolean("is_visible").notNull().default(true),
+  is_primary: boolean("is_primary").notNull().default(false),
   sort: columnSortEnum("sort").notNull().default("asc"),
   ...timeStamps,
 });
@@ -125,7 +129,9 @@ export const views = createTable("views", {
     .references(() => bases.id, { onDelete: "cascade" })
     .notNull(),
   name: text("name").notNull(),
-  config: jsonb("config").notNull(), // Stores filters, sorts, column visibility
+  filters: jsonb("filters").notNull().$type<FilterConfig[]>(),
+  sorts: jsonb("sorts").notNull().$type<SortConfig[]>(),
+  hiddenColumns: jsonb("hiddenColumns").notNull().$type<string[]>(),
   ...timeStamps,
 });
 

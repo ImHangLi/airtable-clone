@@ -1,8 +1,12 @@
-import HomePage from "~/components/home/HomePage";
+import { api, HydrateClient } from "~/trpc/server";
+import { HomeClientComponent } from "~/components/home/HomeClientComponent";
 
-export default function Home() {
-  return <HomePage />;
+export default async function Home() {
+  const bases = await api.base.getAllByLastUpdated();
+
+  return (
+    <HydrateClient>
+      <HomeClientComponent initialBases={bases} />
+    </HydrateClient>
+  );
 }
-
-// Set revalidate time to avoid stale data
-export const revalidate = 30; // revalidate every 30 seconds

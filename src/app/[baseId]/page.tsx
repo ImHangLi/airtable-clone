@@ -1,22 +1,11 @@
-"use server";
+import { BaseRedirect } from "~/components/navigation/BaseRedirect";
 
-import { getColorFromBaseId } from "~/lib/utils";
-import BaseSkeleton from "~/components/base/BaseSkeleton";
-import BaseRedirect from "./client";
-
-export default async function BasePage({
-  params,
-}: {
+interface BasePageProps {
   params: Promise<{ baseId: string }>;
-}) {
+}
+
+export default async function BasePage({ params }: BasePageProps) {
   const { baseId } = await params;
 
-  const baseColor = getColorFromBaseId(baseId);
-
-  return(
-    <>
-      <BaseSkeleton baseColor={baseColor} />
-      <BaseRedirect params={params} />
-    </>
-  );
+  return <BaseRedirect baseId={baseId} />;
 }

@@ -1,27 +1,51 @@
 "use client";
 
-import { useState } from "react";
-import { TopNav } from "./TopNav";
-import { Sidebar } from "./SideBar";
-import { BaseCard } from "./BaseCard";
-import { CreateBaseButton } from "./CreateBaseButton";
+import { useState, useMemo, useEffect } from "react";
+import { TopNav } from "~/components/home/TopNav";
+import { Sidebar } from "~/components/home/SideBar";
+import { BaseCard } from "~/components/home/BaseCard";
+import { CreateBaseButton } from "~/components/home/CreateBaseButton";
 import { api } from "~/trpc/react";
+import { sortBasesByLastViewed } from "~/utils/lastViewedBase";
+import type { RouterOutputs } from "~/trpc/react";
 
-export function HomeClientShell({
+interface HomeClientComponentProps {
+  initialBases: RouterOutputs["base"]["getAllByLastUpdated"];
+}
+
+export function HomeClientComponent({
   initialBases,
-}: {
-  initialBases: Array<{ id: string; name: string; color: string }>;
-}) {
+}: HomeClientComponentProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isHydrated, setIsHydrated] = useState(false);
 
+  // Use server-rendered data as initial data, but keep it reactive for updates
   const { data: bases = initialBases } = api.base.getAllByLastUpdated.useQuery(
     undefined,
     {
-      // Keep the data fresh
+      // Use initial data to prevent flickering
+      initialData: initialBases,
+      // Keep the data fresh but don't refetch immediately since we have SSR data
       refetchOnWindowFocus: true,
-      refetchOnMount: true,
+      refetchOnMount: false, // Changed to false since we have SSR data
+      // Stale time to prevent unnecessary refetches
+      staleTime: 30 * 1000, // 30 seconds
     },
   );
+
+  // Handle hydration - only sort after client-side hydration to avoid mismatch
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
+
+  const sortedBases = useMemo(() => {
+    // During SSR and before hydration, use original order to prevent hydration mismatch
+    if (!isHydrated) {
+      return bases;
+    }
+    // After hydration, use localStorage-based sorting
+    return sortBasesByLastViewed(bases);
+  }, [bases, isHydrated]);
 
   return (
     <div className="flex h-screen flex-col">
@@ -48,10 +72,10 @@ export function HomeClientShell({
         {/* Main content */}
         <div className="flex-1 transition-all duration-300">
           <h1 className="pt-8 pl-12 text-[27px] font-[675]">Home</h1>
-          {bases.length > 0 ? (
+          {sortedBases.length > 0 ? (
             <div className="m-8">
               <div className="mt-8 grid grid-cols-[repeat(auto-fill,minmax(286px,1fr))] gap-4">
-                {bases.map((base) => (
+                {sortedBases.map((base) => (
                   <BaseCard
                     key={base.id}
                     baseId={base.id}
