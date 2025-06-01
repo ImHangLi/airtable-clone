@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "~/trpc/react";
 import { getLastViewedTable } from "~/utils/lastViewedTable";
 import { getLastViewedView } from "~/utils/lastViewedView";
+import { setLastViewedBase } from "~/utils/lastViewedBase";
 
 interface BaseRedirectProps {
   baseId: string;
@@ -15,70 +16,66 @@ export function BaseRedirect({ baseId }: BaseRedirectProps) {
   const utils = api.useUtils();
   const createDefaultMutation = api.table.createDefault.useMutation();
 
+  // Prevent multiple runs
+  const hasNavigated = useRef(false);
+
   useEffect(() => {
+    // Only run once per baseId
+    if (hasNavigated.current) return;
+
     const navigateToLastViewed = async () => {
       try {
-        // First, check localStorage for the last viewed table for this base
+        hasNavigated.current = true;
+
+        // Set this base as the last viewed base
+        setLastViewedBase(baseId);
+
+        // Step 1: Check localStorage for last viewed table
         const lastViewedTableId = getLastViewedTable(baseId);
 
         if (lastViewedTableId) {
-          // If we have a last viewed table, check for the last viewed view
+          // Step 2: Check for last viewed view
           const lastViewedViewId = getLastViewedView(lastViewedTableId);
 
           if (lastViewedViewId) {
-            // We have both table and view - navigate directly
-            console.log(
-              `Navigating to last viewed: /${baseId}/${lastViewedTableId}/${lastViewedViewId}`,
-            );
+            // Found both - navigate directly
             router.push(`/${baseId}/${lastViewedTableId}/${lastViewedViewId}`);
             return;
-          } else {
-            // We have table but no view - get the default view for the table
-            try {
-              const tableDefaultView =
-                await utils.table.getTableDefaultView.fetch({
-                  tableId: lastViewedTableId,
-                });
+          }
 
-              if (tableDefaultView?.view?.id) {
-                console.log(
-                  `Navigating to last viewed table with default view: /${baseId}/${lastViewedTableId}/${tableDefaultView.view.id}`,
-                );
-                router.push(
-                  `/${baseId}/${lastViewedTableId}/${tableDefaultView.view.id}`,
-                );
-                return;
-              }
-            } catch (error) {
-              console.warn(
-                "Failed to get default view for last viewed table:",
-                error,
+          // Step 3: Get default view for the table
+          try {
+            const tableDefaultView =
+              await utils.table.getTableDefaultView.fetch({
+                tableId: lastViewedTableId,
+              });
+
+            if (tableDefaultView?.view?.id) {
+              router.push(
+                `/${baseId}/${lastViewedTableId}/${tableDefaultView.view.id}`,
               );
-              // Fall through to database query
+              return;
             }
+          } catch (error) {
+            console.warn(
+              "Failed to get default view for last viewed table:",
+              error,
+            );
+            // Continue to next step
           }
         }
 
-        // No localStorage data or failed to use it - fall back to database query
-        console.log(
-          "No localStorage data found, querying database for latest table/view",
-        );
+        // Step 4: Query database for any existing table/view
         const latestTableView = await utils.table.getLatest.fetch({ baseId });
 
         if (latestTableView?.table?.id && latestTableView?.view?.id) {
-          console.log(
-            `Navigating to database latest: /${baseId}/${latestTableView.table.id}/${latestTableView.view.id}`,
-          );
           router.push(
             `/${baseId}/${latestTableView.table.id}/${latestTableView.view.id}`,
           );
           return;
         }
 
-        // No existing table/view found - create default ones
-        console.log(
-          "No existing tables found, creating default table and view",
-        );
+        // Step 5: Create default table/view only if nothing exists
         const defaultTable = await createDefaultMutation.mutateAsync({
           baseId,
           tableName: "Table 1",
@@ -86,28 +83,29 @@ export function BaseRedirect({ baseId }: BaseRedirectProps) {
         });
 
         if (defaultTable?.table?.id && defaultTable?.view?.id) {
-          console.log(
-            `Navigating to new default: /${baseId}/${defaultTable.table.id}/${defaultTable.view.id}`,
-          );
           router.push(
             `/${baseId}/${defaultTable.table.id}/${defaultTable.view.id}`,
           );
           return;
         }
 
-        // If we reach here, something went wrong
-        console.error("Failed to create or find any table/view for base");
+        // Fallback to home
         router.push("/");
       } catch (error) {
         console.error("Error during base navigation:", error);
+        hasNavigated.current = false; // Reset on error so user can retry
         router.push("/");
       }
     };
 
     void navigateToLastViewed();
-  }, [baseId, router, utils, createDefaultMutation]);
+  }, [baseId]); // Only depend on baseId
 
-  // Show a simple loading indicator while we determine where to navigate
+  // Reset navigation flag when baseId changes
+  useEffect(() => {
+    hasNavigated.current = false;
+  }, [baseId]);
+
   return (
     <div className="flex h-screen items-center justify-center">
       <div className="flex items-center space-x-2">

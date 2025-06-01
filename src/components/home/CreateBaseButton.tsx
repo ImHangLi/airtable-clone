@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { api } from "~/trpc/react";
 import { getColorFromBaseId } from "~/lib/utils";
+import { setLastViewedBase } from "~/utils/lastViewedBase";
 
 export function CreateBaseButton() {
   const [isCreating, setIsCreating] = useState(false);
@@ -44,6 +45,9 @@ export function CreateBaseButton() {
         id: baseId,
         color,
       });
+
+      // Set as last viewed base immediately
+      setLastViewedBase(baseId);
 
       // Navigate to the new base
       router.push(`/${baseId}?color=${encodeURIComponent(color)}`);
