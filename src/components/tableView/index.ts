@@ -5,5 +5,5 @@ export { default as TableView } from "./TableView";
 export { EditableCell } from "./EditableCell";
 export { RowNumberCell } from "./RowNumberCell";
 export { ColumnHeaderEditor } from "./ColumnHeaderEditor";
-export { SimpleContextMenu } from "./SimpleContextMenu";
+export { RowContextMenu } from "./RowContextMenu";
 export { createCellRenderer } from "./cellRenderers";

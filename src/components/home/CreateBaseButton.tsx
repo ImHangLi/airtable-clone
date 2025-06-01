@@ -2,33 +2,53 @@
 
 import { useState } from "react";
 import { Button } from "~/components/ui/button";
-import { createBase } from "~/actions/base.actions";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { api } from "~/trpc/react";
+import { getColorFromBaseId } from "~/lib/utils";
 
 export function CreateBaseButton() {
   const [isCreating, setIsCreating] = useState(false);
   const router = useRouter();
   const utils = api.useUtils();
+
+  // Use tRPC mutation directly instead of server action
+  const createBaseMutation = api.base.create.useMutation({
+    onSuccess: () => {
+      // Invalidate and refetch base list
+      void utils.base.getAllByLastUpdated.invalidate();
+    },
+    onError: (error) => {
+      console.error("Error creating base:", error);
+      toast.error("Failed to create base. Please try again.");
+    },
+  });
+
   const handleCreateBase = async () => {
     if (isCreating) return;
 
     try {
       setIsCreating(true);
-      const result = await createBase();
 
-      if (!result) {
-        toast.error("Failed to create base. Please try again.");
+      // Generate base ID and color (same logic as deleted action)
+      const baseId = crypto.randomUUID();
+      const color = getColorFromBaseId(baseId);
+
+      if (!color) {
+        toast.error("Failed to generate base color. Please try again.");
         return;
       }
 
-      // Navigate to the new base
-      router.push(
-        `/${result.baseId}?color=${encodeURIComponent(result.color)}`,
-      );
+      // Create the base using tRPC mutation
+      await createBaseMutation.mutateAsync({
+        id: baseId,
+        color,
+      });
 
-      void utils.base.getAllByLastUpdated.invalidate();
+      // Navigate to the new base
+      router.push(`/${baseId}?color=${encodeURIComponent(color)}`);
+
+      toast.success("Base created successfully!");
     } catch (error) {
       console.error("Error creating base:", error);
       toast.error("Failed to create base. Please try again.");

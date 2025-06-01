@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import { DROPDOWN_STYLE } from "./constants";
+import { Trash2 } from "lucide-react";
 
-interface SimpleContextMenuProps {
+interface RowContextMenuProps {
   isOpen: boolean;
   position: { x: number; y: number };
   rowId: string;
@@ -11,13 +11,13 @@ interface SimpleContextMenuProps {
   onDeleteAction: (rowId: string) => Promise<void>;
 }
 
-export function SimpleContextMenu({
+export function RowContextMenu({
   isOpen,
   position,
   rowId,
   onCloseAction,
   onDeleteAction,
-}: SimpleContextMenuProps) {
+}: RowContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const isDeleting = useRef(false);
 
@@ -64,19 +64,23 @@ export function SimpleContextMenu({
   return (
     <div
       ref={menuRef}
-      className="fixed z-50 rounded-md border border-gray-200 bg-white p-3 shadow-lg"
+      className="fixed z-50 rounded-md border border-gray-200 bg-white shadow-lg"
       style={{
         left: position.x,
         top: position.y,
-        ...DROPDOWN_STYLE,
+        width: "320px",
+        padding: "12px",
       }}
     >
-      <button
-        onClick={handleDelete}
-        className="w-full cursor-pointer rounded px-2 py-1.5 text-left text-[13px] text-red-600 hover:bg-red-50 focus:bg-red-50 focus:outline-none"
-      >
-        Delete record
-      </button>
+      <div className="space-y-1">
+        <button
+          onClick={handleDelete}
+          className="flex w-full items-center gap-4 rounded px-3 py-2 text-left text-[13px] text-red-500 hover:bg-red-50 focus:bg-red-50 focus:outline-none"
+        >
+          <Trash2 className="h-3.5 w-3.5 text-gray-500" />
+          Delete record
+        </button>
+      </div>
     </div>
   );
 }
