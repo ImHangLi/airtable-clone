@@ -15,95 +15,83 @@ export function BaseRedirect({ baseId }: BaseRedirectProps) {
   const router = useRouter();
   const utils = api.useUtils();
   const createDefaultMutation = api.table.createDefault.useMutation();
-
-  // Prevent multiple runs
   const hasNavigated = useRef(false);
+  const currentBaseId = useRef(baseId);
+
+  const navigateToTableView = (tableId: string, viewId: string) => {
+    router.push(`/${baseId}/${tableId}/${viewId}`);
+  };
+
+  const tryNavigate = (tableId?: string, viewId?: string): boolean => {
+    if (tableId && viewId) {
+      navigateToTableView(tableId, viewId);
+      return true;
+    }
+    return false;
+  };
 
   useEffect(() => {
-    // Only run once per baseId
-    if (hasNavigated.current) return;
+    if (currentBaseId.current !== baseId) {
+      hasNavigated.current = false;
+      currentBaseId.current = baseId;
+    }
+  }, [baseId]);
 
+  useEffect(() => {
     const navigateToLastViewed = async () => {
+      if (hasNavigated.current) return;
+
       try {
         hasNavigated.current = true;
-
-        // Set this base as the last viewed base
         setLastViewedBase(baseId);
 
-        // Step 1: Check localStorage for last viewed table
+        // Step 1: Try last viewed table + view
         const lastViewedTableId = getLastViewedTable(baseId);
-
         if (lastViewedTableId) {
-          // Step 2: Check for last viewed view
           const lastViewedViewId = getLastViewedView(lastViewedTableId);
-
-          if (lastViewedViewId) {
-            // Found both - navigate directly
-            router.push(`/${baseId}/${lastViewedTableId}/${lastViewedViewId}`);
+          if (tryNavigate(lastViewedTableId, lastViewedViewId ?? undefined))
             return;
-          }
 
-          // Step 3: Get default view for the table
+          // Step 2: Try last viewed table + default view
           try {
             const tableDefaultView =
               await utils.table.getTableDefaultView.fetch({
                 tableId: lastViewedTableId,
               });
-
-            if (tableDefaultView?.view?.id) {
-              router.push(
-                `/${baseId}/${lastViewedTableId}/${tableDefaultView.view.id}`,
-              );
+            if (tryNavigate(lastViewedTableId, tableDefaultView?.view?.id))
               return;
-            }
           } catch (error) {
             console.warn(
               "Failed to get default view for last viewed table:",
               error,
             );
-            // Continue to next step
           }
         }
 
-        // Step 4: Query database for any existing table/view
+        // Step 3: Try any existing table/view
         const latestTableView = await utils.table.getLatest.fetch({ baseId });
-
-        if (latestTableView?.table?.id && latestTableView?.view?.id) {
-          router.push(
-            `/${baseId}/${latestTableView.table.id}/${latestTableView.view.id}`,
-          );
+        if (tryNavigate(latestTableView?.table?.id, latestTableView?.view?.id))
           return;
-        }
 
-        // Step 5: Create default table/view only if nothing exists
+        // Step 4: Create default table/view
         const defaultTable = await createDefaultMutation.mutateAsync({
           baseId,
           tableName: "Table 1",
           viewName: "Grid View",
         });
-
-        if (defaultTable?.table?.id && defaultTable?.view?.id) {
-          router.push(
-            `/${baseId}/${defaultTable.table.id}/${defaultTable.view.id}`,
-          );
+        if (tryNavigate(defaultTable?.table?.id, defaultTable?.view?.id))
           return;
-        }
 
-        // Fallback to home
+        // Final fallback
         router.push("/");
       } catch (error) {
         console.error("Error during base navigation:", error);
-        hasNavigated.current = false; // Reset on error so user can retry
+        hasNavigated.current = false; // Allow retry on error
         router.push("/");
       }
     };
 
     void navigateToLastViewed();
-  }, [baseId]); // Only depend on baseId
-
-  // Reset navigation flag when baseId changes
-  useEffect(() => {
-    hasNavigated.current = false;
   }, [baseId]);
 
   return (
