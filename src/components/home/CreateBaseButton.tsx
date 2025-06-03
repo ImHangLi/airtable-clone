@@ -67,6 +67,7 @@ export function CreateBaseButton() {
         className="h-8 w-full cursor-pointer gap-2 bg-[rgb(45,127,249)] text-[13px] font-semibold hover:bg-[rgb(41,122,241)]"
         onClick={handleCreateBase}
         disabled={isCreating}
+        title="Click to create a base"
       >
         {isCreating ? "Creating..." : "Create a base"}
       </Button>
