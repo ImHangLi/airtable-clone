@@ -65,5 +65,5 @@ This is a [T3 Stack](https://create.t3.gg/) project bootstrapped with `create-t3
 
 ## Final
 
-- [] User test to find bugs
-- [] Make it more like a product with better UX and performance
+- [ ] User test to find bugs
+- [ ] Make it more like a product with better UX and performance
