@@ -55,7 +55,7 @@ export default function FilterMenu({
 
   const activeFilters = filtering || [];
 
-  const debouncedInputValues = useDebounce(inputValues, 500);
+  const debouncedInputValues = useDebounce(inputValues, 1000);
 
   // Helper function to get field names for applied filters only and remove duplicates
   const getFilteredFieldNames = useCallback(() => {

@@ -46,7 +46,7 @@ export function useTableSearch({
 }: UseTableSearchOptions = {}): UseTableSearchReturn {
   const [searchValue, setSearchValue] = useState("");
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
-  const debouncedSearchValue = useDebounce(searchValue, 300);
+  const debouncedSearchValue = useDebounce(searchValue, 1000);
 
   // Store callbacks in refs to avoid dependency issues
   const onSearchRef = useRef(onSearch);
