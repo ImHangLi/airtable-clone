@@ -13,7 +13,7 @@ import { useViewData } from "~/hooks/useViewData";
 import { useViewFiltering } from "~/hooks/useViewFiltering";
 import { useViewSorting } from "~/hooks/useViewSorting";
 import { useHiddenColumn } from "~/hooks/useHiddenColumn";
-import { getColorFromBaseId, getDarkerColorFromBaseId } from "~/lib/utils";
+import { getColorFromBaseId } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { setLastViewedTable } from "~/utils/lastViewedTable";
 import { setLastViewedView } from "~/utils/lastViewedView";
@@ -196,7 +196,6 @@ export default function TableViewPage({
   // Derived values for UI
   const baseName = baseNameAndColor?.name;
   const baseColor = getColorFromBaseId(baseId);
-  const darkerColor = getDarkerColorFromBaseId(baseId);
 
   // Show error toast for table data errors (only once)
   if (error && !hookLoadingStatus) {
@@ -224,11 +223,7 @@ export default function TableViewPage({
     return (
       <div className="flex h-screen w-screen flex-col">
         <BaseTopNav baseName={baseName} baseColor={baseColor} baseId={baseId} />
-        <TableNav
-          darkerColor={darkerColor}
-          baseId={baseId}
-          currentTableId={tableId}
-        />
+        <TableNav baseId={baseId} currentTableId={tableId} />
         <div className="flex min-h-0 flex-1 items-center justify-center">
           <TableSkeleton />
         </div>
@@ -241,11 +236,7 @@ export default function TableViewPage({
     return (
       <div className="flex h-screen w-screen flex-col">
         <BaseTopNav baseName={baseName} baseColor={baseColor} baseId={baseId} />
-        <TableNav
-          darkerColor={darkerColor}
-          baseId={baseId}
-          currentTableId={tableId}
-        />
+        <TableNav baseId={baseId} currentTableId={tableId} />
         <div className="flex min-h-0 flex-1 items-center justify-center">
           <ErrorState message={error} />
         </div>
@@ -258,11 +249,7 @@ export default function TableViewPage({
     return (
       <div className="flex h-screen w-screen flex-col">
         <BaseTopNav baseName={baseName} baseColor={baseColor} baseId={baseId} />
-        <TableNav
-          darkerColor={darkerColor}
-          baseId={baseId}
-          currentTableId={tableId}
-        />
+        <TableNav baseId={baseId} currentTableId={tableId} />
         <div className="flex min-h-0 flex-1 items-center justify-center">
           <ErrorState message={viewError} />
         </div>
@@ -281,11 +268,7 @@ export default function TableViewPage({
       <BaseTopNav baseName={baseName} baseColor={baseColor} baseId={baseId} />
 
       {/* Table Navigation */}
-      <TableNav
-        darkerColor={darkerColor}
-        baseId={baseId}
-        currentTableId={tableId}
-      />
+      <TableNav baseId={baseId} currentTableId={tableId} />
 
       {/* View Controls */}
       <ViewControl

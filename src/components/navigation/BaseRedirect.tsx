@@ -77,7 +77,7 @@ export function BaseRedirect({ baseId }: BaseRedirectProps) {
         const defaultTable = await createDefaultMutation.mutateAsync({
           baseId,
           tableName: "Table 1",
-          viewName: "Grid View",
+          viewName: "Grid view",
         });
         if (tryNavigate(defaultTable?.table?.id, defaultTable?.view?.id))
           return;
