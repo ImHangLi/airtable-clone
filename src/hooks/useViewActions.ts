@@ -38,13 +38,18 @@ export function useViewActions({
   // Update view name mutation
   const updateViewNameMutation = api.view.updateViewName.useMutation({
     onMutate: async ({ viewId, name }) => {
-      // Cancel outgoing queries
+      // Cancel outgoing queries for both endpoints
       await utils.view.getViewsByTable.cancel({ tableId });
+      await utils.view.getViewWithValidation.cancel({ viewId, tableId });
 
-      // Get previous data
+      // Get previous data from both caches
       const previousViews = utils.view.getViewsByTable.getData({ tableId });
+      const previousViewData = utils.view.getViewWithValidation.getData({
+        viewId,
+        tableId,
+      });
 
-      // Optimistically update the view
+      // Optimistically update the views list cache
       utils.view.getViewsByTable.setData({ tableId }, (old) => {
         if (!old) return old;
         return old.map((view) =>
@@ -52,19 +57,33 @@ export function useViewActions({
         );
       });
 
-      return { previousViews };
+      // Optimistically update the individual view data cache
+      utils.view.getViewWithValidation.setData({ viewId, tableId }, (old) => {
+        if (!old) return old;
+        return { ...old, name };
+      });
+
+      return { previousViews, previousViewData };
     },
     onSuccess: () => {
+      // No need to invalidate - optimistic update already handled the UI
       toast.success("View renamed successfully");
     },
-    onError: (error, _, context) => {
-      // Revert optimistic update
+    onError: (error, { viewId }, context) => {
+      // Revert optimistic updates for both caches
       if (context?.previousViews) {
         utils.view.getViewsByTable.setData({ tableId }, context.previousViews);
+      }
+      if (context?.previousViewData) {
+        utils.view.getViewWithValidation.setData(
+          { viewId, tableId },
+          context.previousViewData,
+        );
       }
       toast.error(`Failed to rename view: ${error.message}`);
       // Only invalidate on error to ensure data consistency
       void utils.view.getViewsByTable.invalidate({ tableId });
+      void utils.view.getViewWithValidation.invalidate({ viewId, tableId });
     },
   });
 
