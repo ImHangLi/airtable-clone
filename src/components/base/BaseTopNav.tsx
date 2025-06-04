@@ -2,10 +2,11 @@
 
 import { UserButton } from "@clerk/nextjs";
 import { AirtableLogo } from "../Icons";
-import { ChevronDown } from "lucide-react";
+import { Bell, ChevronDown, HelpCircle, History, Users } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { api } from "~/trpc/react";
 import { toast } from "sonner";
+import { Button } from "../ui/button";
 
 interface BaseTopNavProps {
   baseName: string | undefined;
@@ -153,7 +154,7 @@ export default function BaseTopNav({
     >
       <div className="flex h-12 flex-1 items-center justify-between">
         <div className="flex items-center">
-          <div className="flex min-w-[60px] items-center gap-3">
+          <div className="flex min-w-[60px] items-center gap-2">
             <AirtableLogo />
             {isRenaming ? (
               <div ref={formRef} className="relative">
@@ -178,11 +179,80 @@ export default function BaseTopNav({
                 <ChevronDown className="ml-2 h-4 w-4 text-white" />
               </div>
             )}
+            <nav className="flex items-center">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mr-2 ml-1 h-7 rounded-full px-3 text-[13px] leading-[1.5] font-normal text-white transition-colors hover:bg-[rgba(0,0,0,0.15)] hover:text-white"
+              >
+                Data
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mr-2 h-7 rounded-full px-3 text-[13px] leading-[1.5] font-normal text-white transition-colors hover:bg-[rgba(0,0,0,0.15)] hover:text-white"
+              >
+                Automations
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mr-3 h-7 rounded-full px-3 text-[13px] leading-[1.5] font-normal text-white transition-colors hover:bg-[rgba(0,0,0,0.15)] hover:text-white"
+              >
+                Interfaces
+              </Button>
+              <div className="h-4 w-px bg-white/20" />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="ml-3 h-7 rounded-full px-3 text-[13px] leading-[1.5] font-normal text-white transition-colors hover:bg-[rgba(0,0,0,0.15)] hover:text-white"
+              >
+                Forms
+              </Button>
+            </nav>
           </div>
         </div>
         <div className="flex items-center">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 rounded-full px-3 text-[13px] leading-[1.5] font-normal text-white transition-colors hover:bg-[rgba(0,0,0,0.15)] hover:text-white"
+          >
+            <History className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 rounded-full px-3 text-[13px] leading-[1.5] font-normal text-white transition-colors hover:bg-[rgba(0,0,0,0.15)] hover:text-white"
+          >
+            <HelpCircle className="h-4 w-4" />
+            <span>Help</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mx-2 h-7 rounded-full bg-[rgba(255,255,255,0.95)] px-3 text-[13px] leading-[1.5] font-normal text-[rgb(97,102,112)] hover:bg-[rgba(255,255,255)]"
+          >
+            <div className="flex items-center gap-1.5">
+              <Users className="h-4 w-4" />
+              <span>Share</span>
+            </div>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="relative mx-2 h-7 w-7 rounded-full bg-[rgba(255,255,255,0.95)] p-0 text-[rgb(97,102,112)] hover:bg-[rgba(255,255,255)]"
+          >
+            <Bell className="h-4 w-4" />
+          </Button>
           <div className="ml-2 flex items-center">
-            <UserButton />
+            <UserButton
+              appearance={{
+                elements: {
+                  userButtonBox: "border-1 border-[rgba(255,255,255,0.95)] rounded-full"
+                }
+              }}
+            />
           </div>
         </div>
       </div>

@@ -5,7 +5,6 @@ import { Pencil, Trash2 } from "lucide-react";
 
 interface TableContextMenuProps {
   tableId: string;
-  initialName: string;
   position: { x: number; y: number };
   onRenameAction: () => void;
   onDeleteAction: (tableId: string) => Promise<void>;
@@ -15,7 +14,6 @@ interface TableContextMenuProps {
 
 export function TableContextMenu({
   tableId,
-  initialName,
   position,
   onRenameAction,
   onDeleteAction,

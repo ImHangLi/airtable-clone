@@ -51,7 +51,7 @@ export function TableSkeleton() {
   ];
 
   return (
-    <div className="relative animate-pulse flex-1 overflow-hidden bg-gray-50">
+    <div className="relative flex-1 animate-pulse overflow-hidden bg-gray-50">
       <div className="h-full overflow-auto">
         <div
           style={{

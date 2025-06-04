@@ -62,7 +62,6 @@ export default function TableViewPage({
   const {
     viewData,
     viewActions,
-    isLoading: isViewLoading,
     error: viewError,
   } = useViewData({ viewId, tableId });
 
@@ -217,19 +216,6 @@ export default function TableViewPage({
     setLastViewedTable(baseId, tableId);
     setLastViewedView(tableId, viewId);
   }, [baseId, tableId, viewId]);
-
-  // Show loading state if view is still loading
-  if (isViewLoading) {
-    return (
-      <div className="flex h-screen w-screen flex-col">
-        <BaseTopNav baseName={baseName} baseColor={baseColor} baseId={baseId} />
-        <TableNav baseId={baseId} currentTableId={tableId} />
-        <div className="flex min-h-0 flex-1 items-center justify-center">
-          <TableSkeleton />
-        </div>
-      </div>
-    );
-  }
 
   // Show error state if data couldn't be loaded
   if (error && !hookLoadingStatus) {
