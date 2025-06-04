@@ -1,5 +1,6 @@
 import { Plus, ChevronDown } from "lucide-react";
 import { Button } from "../ui/button";
+import { Skeleton } from "../ui/skeleton";
 import { useCallback, useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "~/trpc/react";
@@ -59,7 +60,6 @@ export default function TableNav({ baseId, currentTableId }: TableNavProps) {
 
   const {
     tables,
-    currentTable,
     contextMenu,
     canDeleteTable,
     handleShowContextMenu,
@@ -370,18 +370,89 @@ export default function TableNav({ baseId, currentTableId }: TableNavProps) {
   const inactiveTextColor = "text-[rgba(255,255,255,0.85)]";
   const separatorClasses = "h-[12px] w-px bg-[#ffffff26]";
 
-  const displayTables =
-    isLoading && tables.length === 0
-      ? [
-          {
-            id: currentTableId,
-            name: currentTable?.name ?? "Table 1",
-            base_id: baseId,
-            created_at: new Date(),
-            updated_at: new Date(),
-          },
-        ]
-      : tables;
+  // Show skeleton loading state when data is loading
+  const showSkeletonLoading = isLoading && tables.length === 0;
+
+  // Create skeleton placeholders that match the dimensions of actual table tabs
+  const renderSkeletonTabs = () => {
+    return (
+      <>
+        {/* Active table skeleton - wider to simulate current table */}
+        <div className="relative flex items-center">
+          <div
+            className={`${buttonBaseClasses} bg-white`}
+            style={{ minHeight: "32px", padding: "12px 12px" }}
+          >
+            <Skeleton className="h-[13px] w-16 bg-gray-200" />
+          </div>
+        </div>
+      </>
+    );
+  };
+
+  // Render actual table tabs
+  const renderActualTabs = () => {
+    return tables.map((table) => {
+      const isActive = table.id === currentTableId;
+      const isTemp = table.id.startsWith("temp-");
+
+      return (
+        <div key={table.id} className="relative flex items-center">
+          <Button
+            key={table.id}
+            variant="ghost"
+            size="sm"
+            className={`${buttonBaseClasses} cursor-pointer ${
+              isActive
+                ? "bg-white text-black hover:bg-white"
+                : `${inactiveTextColor}`
+            }`}
+            style={{
+              backgroundColor: isActive ? "white" : darkerColor,
+            }}
+            onMouseOver={(e) => {
+              if (!isActive) {
+                e.currentTarget.style.backgroundColor = "rgba(0,0,0,0.1)";
+              }
+            }}
+            onMouseOut={(e) => {
+              if (!isActive) {
+                e.currentTarget.style.backgroundColor = darkerColor;
+              }
+            }}
+            onClick={() => !isTemp && handleTableClick(table.id)}
+            onContextMenu={(e) =>
+              !isTemp && handleTableRightClick(e, table.id, table.name)
+            }
+            onDoubleClick={(e) =>
+              !isTemp &&
+              isActive &&
+              handleTableDoubleClick(e, table.id, table.name)
+            }
+            disabled={isTemp}
+          >
+            <span
+              className={`truncate text-[13px] ${isActive ? "text-black" : "text-[rgba(255,255,255,0.85)]"}`}
+            >
+              {table.name}
+            </span>
+            {isActive && (
+              <div
+                className="z-10 cursor-pointer rounded"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleChevronClick(e, table.id, table.name);
+                }}
+              >
+                <ChevronDown className="h-4 w-4" />
+              </div>
+            )}
+          </Button>
+        </div>
+      );
+    });
+  };
 
   return (
     <div
@@ -394,54 +465,7 @@ export default function TableNav({ baseId, currentTableId }: TableNavProps) {
         style={{ backgroundColor: darkerColor, borderTopRightRadius: "6px" }}
       >
         <div className="flex items-center pl-3">
-          {displayTables.map((table) => {
-            const isActive = table.id === currentTableId;
-            const isTemp = table.id.startsWith("temp-");
-
-            return (
-              <div key={table.id} className="relative flex items-center">
-                <Button
-                  key={table.id}
-                  variant="ghost"
-                  size="sm"
-                  className={`${buttonBaseClasses} cursor-pointer ${
-                    isActive
-                      ? "bg-white text-black hover:bg-white"
-                      : `${inactiveTextColor} hover:bg-[#4E535B] hover:text-[rgba(255,255,255,0.95)]`
-                  }`}
-                  style={{ backgroundColor: isActive ? "white" : darkerColor }}
-                  onClick={() => !isTemp && handleTableClick(table.id)}
-                  onContextMenu={(e) =>
-                    !isTemp && handleTableRightClick(e, table.id, table.name)
-                  }
-                  onDoubleClick={(e) =>
-                    !isTemp &&
-                    isActive &&
-                    handleTableDoubleClick(e, table.id, table.name)
-                  }
-                  disabled={isTemp}
-                >
-                  <span
-                    className={`truncate text-[13px] ${isActive ? "text-black" : "text-[rgba(255,255,255,0.85)]"}`}
-                  >
-                    {table.name}
-                  </span>
-                  {isActive && (
-                    <div
-                      className="z-10 cursor-pointer rounded"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleChevronClick(e, table.id, table.name);
-                      }}
-                    >
-                      <ChevronDown className="h-4 w-4" />
-                    </div>
-                  )}
-                </Button>
-              </div>
-            );
-          })}
+          {showSkeletonLoading ? renderSkeletonTabs() : renderActualTabs()}
         </div>
 
         <div className={separatorClasses} />
@@ -461,7 +485,6 @@ export default function TableNav({ baseId, currentTableId }: TableNavProps) {
         {contextMenu && (
           <TableContextMenu
             tableId={contextMenu.tableId}
-            initialName={contextMenu.tableName}
             position={contextMenu.position}
             onRenameAction={handleShowRenameForm}
             onDeleteAction={handleDeleteTable}
