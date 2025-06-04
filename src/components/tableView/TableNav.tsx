@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { api } from "~/trpc/react";
 import { toast } from "sonner";
 import { TableContextMenu } from "./TableContextMenu";
+import { TableRenameForm } from "./TableRenameForm";
 import { setLastViewedTable } from "~/utils/lastViewedTable";
 import { setLastViewedView, getLastViewedView } from "~/utils/lastViewedView";
 import { useTableActions } from "~/hooks/useTableActions";
@@ -16,21 +17,20 @@ import {
   FormItem,
   FormMessage,
 } from "../ui/form";
+import { getColorFromBaseId, getDarkerColorFromBaseId } from "~/lib/utils";
 
 interface TableNavProps {
-  darkerColor: string;
   baseId: string;
   currentTableId: string;
 }
 
-export default function TableNav({
-  darkerColor,
-  baseId,
-  currentTableId,
-}: TableNavProps) {
+export default function TableNav({ baseId, currentTableId }: TableNavProps) {
   const router = useRouter();
   const utils = api.useUtils();
   const formRef = useRef<HTMLDivElement>(null);
+
+  const baseColor = getColorFromBaseId(baseId);
+  const darkerColor = getDarkerColorFromBaseId(baseColor);
 
   // State management with persistence
   const [isAddingTable, setIsAddingTable] = useState(() => {
@@ -40,6 +40,13 @@ export default function TableNav({
     }
     return false;
   });
+
+  // State for rename form
+  const [renameForm, setRenameForm] = useState<{
+    tableId: string;
+    tableName: string;
+    position: { x: number; y: number };
+  } | null>(null);
 
   const form = useForm({
     defaultValues: {
@@ -57,7 +64,6 @@ export default function TableNav({
     canDeleteTable,
     handleShowContextMenu,
     handleCloseContextMenu,
-    handleUpdateTableName,
     handleDeleteTable,
   } = useTableActions({ baseId, currentTableId });
 
@@ -271,6 +277,63 @@ export default function TableNav({
     [handleShowContextMenu],
   );
 
+  // New handler for double-click on table name
+  const handleTableDoubleClick = useCallback(
+    (e: React.MouseEvent, tableId: string, tableName: string) => {
+      if (tableId.startsWith("temp-")) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const rect = e.currentTarget.getBoundingClientRect();
+      setRenameForm({
+        tableId,
+        tableName,
+        position: { x: rect.left, y: rect.bottom + 4 },
+      });
+    },
+    [],
+  );
+
+  // New handler for ChevronDown click
+  const handleChevronClick = useCallback(
+    (e: React.MouseEvent, tableId: string, tableName: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handleShowContextMenu(e, tableId, tableName);
+    },
+    [handleShowContextMenu],
+  );
+
+  // Handler for showing rename form from context menu
+  const handleShowRenameForm = useCallback(() => {
+    if (contextMenu) {
+      setRenameForm({
+        tableId: contextMenu.tableId,
+        tableName: contextMenu.tableName,
+        position: contextMenu.position,
+      });
+    }
+  }, [contextMenu]);
+
+  // Handler to close rename form
+  const handleCloseRenameForm = useCallback(() => {
+    setRenameForm(null);
+  }, []);
+
+  // Simple rename handler for the rename form
+  const handleRenameTableFromForm = useCallback(
+    async (tableName: string) => {
+      if (!renameForm) return;
+
+      updateTableNameMutation.mutate({
+        tableId: renameForm.tableId,
+        name: tableName,
+      });
+    },
+    [renameForm, updateTableNameMutation],
+  );
+
   // Effects
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -322,138 +385,194 @@ export default function TableNav({
 
   return (
     <div
-      className="relative flex min-h-8 items-center overflow-hidden border-gray-200"
-      style={{ backgroundColor: darkerColor }}
+      className="flex h-8 items-center justify-between gap-2.5 overflow-hidden border-gray-200"
+      style={{ backgroundColor: baseColor }}
     >
-      <div className="flex items-center pl-3">
-        {displayTables.map((table) => {
-          const isActive = table.id === currentTableId;
-          const isTemp = table.id.startsWith("temp-");
-
-          return (
-            <Button
-              key={table.id}
-              variant="ghost"
-              size="sm"
-              className={`${buttonBaseClasses} cursor-pointer ${
-                isActive
-                  ? "bg-white text-black hover:bg-white"
-                  : `${inactiveTextColor} hover:bg-[#4E535B] hover:text-[rgba(255,255,255,0.95)]`
-              }`}
-              style={{ backgroundColor: isActive ? "white" : darkerColor }}
-              onClick={() => !isTemp && handleTableClick(table.id)}
-              onContextMenu={(e) =>
-                !isTemp && handleTableRightClick(e, table.id, table.name)
-              }
-              disabled={isTemp}
-            >
-              <span
-                className={`truncate text-[13px] ${isActive ? "text-black" : "text-[rgba(255,255,255,0.85)]"}`}
-              >
-                {table.name}
-              </span>
-              {isActive && <ChevronDown className="h-4 w-4" />}
-            </Button>
-          );
-        })}
-      </div>
-
-      <div className={separatorClasses} />
-
-      <Button
-        variant="ghost"
-        size="sm"
-        className={`${buttonBaseClasses} ${inactiveTextColor} min-w-fit hover:text-[rgba(255,255,255,0.95)]`}
-        style={{ backgroundColor: darkerColor }}
-        onClick={handleAddTable}
-        title="Add table"
-        disabled={createTableMutation.isPending}
+      {/* Tables */}
+      <div
+        className="relative flex min-h-8 flex-1 items-center overflow-hidden"
+        style={{ backgroundColor: darkerColor, borderTopRightRadius: "6px" }}
       >
-        <Plus className="h-3.5 w-3.5" />
-      </Button>
+        <div className="flex items-center pl-3">
+          {displayTables.map((table) => {
+            const isActive = table.id === currentTableId;
+            const isTemp = table.id.startsWith("temp-");
 
-      {contextMenu && (
-        <TableContextMenu
-          tableId={contextMenu.tableId}
-          initialName={contextMenu.tableName}
-          position={contextMenu.position}
-          onUpdateAction={handleUpdateTableName}
-          onDeleteAction={handleDeleteTable}
-          onCloseAction={handleCloseContextMenu}
-          canDelete={canDeleteTable}
-        />
-      )}
-
-      {isAddingTable && (
-        <div
-          ref={formRef}
-          className="fixed z-50 rounded-md border border-gray-200 bg-white shadow-lg"
-          style={{
-            left: "200px",
-            top: "90px",
-            width: "320px",
-            padding: "12px",
-          }}
-        >
-          <Form {...form}>
-            <form
-              onSubmit={form.handleSubmit(handleCreateTable)}
-              className="space-y-4"
-            >
-              <FormField
-                control={form.control}
-                name="name"
-                rules={{
-                  required: "Please enter a non-empty table name",
-                  validate: (value) =>
-                    value.trim() !== "" ||
-                    "Please enter a non-empty table name",
-                }}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <input
-                        {...field}
-                        onChange={(e) => {
-                          field.onChange(e);
-                          const value = e.target.value;
-                          persistFormState(true, value);
-                        }}
-                        className="w-full rounded border border-gray-200 px-3 py-2 text-[13px] focus:border-blue-400 focus:ring-2 focus:ring-blue-400 focus:outline-none"
-                        placeholder="Table name"
-                        autoFocus
-                      />
-                    </FormControl>
-                    <FormMessage className="text-xs text-red-500" />
-                  </FormItem>
-                )}
-              />
-              <div className="flex justify-end gap-2">
+            return (
+              <div key={table.id} className="relative flex items-center">
                 <Button
-                  type="button"
-                  variant="outline"
+                  key={table.id}
+                  variant="ghost"
                   size="sm"
-                  onClick={handleCancelAdd}
-                  className="text-[13px]"
-                  disabled={createTableMutation.isPending}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={
-                    !form.watch("name")?.trim() || createTableMutation.isPending
+                  className={`${buttonBaseClasses} cursor-pointer ${
+                    isActive
+                      ? "bg-white text-black hover:bg-white"
+                      : `${inactiveTextColor} hover:bg-[#4E535B] hover:text-[rgba(255,255,255,0.95)]`
+                  }`}
+                  style={{ backgroundColor: isActive ? "white" : darkerColor }}
+                  onClick={() => !isTemp && handleTableClick(table.id)}
+                  onContextMenu={(e) =>
+                    !isTemp && handleTableRightClick(e, table.id, table.name)
                   }
-                  className="h-8 w-16 bg-blue-600 text-[13px] font-normal text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  onDoubleClick={(e) =>
+                    !isTemp &&
+                    isActive &&
+                    handleTableDoubleClick(e, table.id, table.name)
+                  }
+                  disabled={isTemp}
                 >
-                  {createTableMutation.isPending ? "Creating..." : "Create"}
+                  <span
+                    className={`truncate text-[13px] ${isActive ? "text-black" : "text-[rgba(255,255,255,0.85)]"}`}
+                  >
+                    {table.name}
+                  </span>
+                  {isActive && (
+                    <div
+                      className="z-10 cursor-pointer rounded"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleChevronClick(e, table.id, table.name);
+                      }}
+                    >
+                      <ChevronDown className="h-4 w-4" />
+                    </div>
+                  )}
                 </Button>
               </div>
-            </form>
-          </Form>
+            );
+          })}
         </div>
-      )}
+
+        <div className={separatorClasses} />
+
+        <Button
+          variant="ghost"
+          size="sm"
+          className={`${buttonBaseClasses} ${inactiveTextColor} min-w-fit hover:text-[rgba(255,255,255,0.95)]`}
+          style={{ backgroundColor: darkerColor }}
+          onClick={handleAddTable}
+          title="Add table"
+          disabled={createTableMutation.isPending}
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </Button>
+
+        {contextMenu && (
+          <TableContextMenu
+            tableId={contextMenu.tableId}
+            initialName={contextMenu.tableName}
+            position={contextMenu.position}
+            onRenameAction={handleShowRenameForm}
+            onDeleteAction={handleDeleteTable}
+            onCloseAction={handleCloseContextMenu}
+            canDelete={canDeleteTable}
+          />
+        )}
+
+        {renameForm && (
+          <TableRenameForm
+            initialName={renameForm.tableName}
+            position={renameForm.position}
+            onUpdateAction={handleRenameTableFromForm}
+            onCloseAction={handleCloseRenameForm}
+          />
+        )}
+
+        {isAddingTable && (
+          <div
+            ref={formRef}
+            className="fixed z-50 rounded-md border border-gray-200 bg-white shadow-lg"
+            style={{
+              left: "200px",
+              top: "90px",
+              width: "320px",
+              padding: "12px",
+            }}
+          >
+            <Form {...form}>
+              <form
+                onSubmit={form.handleSubmit(handleCreateTable)}
+                className="space-y-4"
+              >
+                <FormField
+                  control={form.control}
+                  name="name"
+                  rules={{
+                    required: "Please enter a non-empty table name",
+                    validate: (value) =>
+                      value.trim() !== "" ||
+                      "Please enter a non-empty table name",
+                  }}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <input
+                          {...field}
+                          onChange={(e) => {
+                            field.onChange(e);
+                            const value = e.target.value;
+                            persistFormState(true, value);
+                          }}
+                          className="w-full rounded border border-gray-200 px-3 py-2 text-[13px] focus:border-blue-400 focus:ring-2 focus:ring-blue-400 focus:outline-none"
+                          placeholder="Table name"
+                          autoFocus
+                        />
+                      </FormControl>
+                      <FormMessage className="text-xs text-red-500" />
+                    </FormItem>
+                  )}
+                />
+                <div className="flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCancelAdd}
+                    className="text-[13px]"
+                    disabled={createTableMutation.isPending}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={
+                      !form.watch("name")?.trim() ||
+                      createTableMutation.isPending
+                    }
+                    className="h-8 w-16 bg-blue-600 text-[13px] font-normal text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {createTableMutation.isPending ? "Creating..." : "Create"}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          </div>
+        )}
+      </div>
+
+      {/* Extensions and Tools */}
+      <div
+        className="flex items-center"
+        style={{ backgroundColor: darkerColor, borderTopLeftRadius: "6px" }}
+      >
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 gap-1 px-3 text-[13px] leading-[18px] font-normal text-[rgba(255,255,255,0.85)] hover:bg-transparent hover:text-[rgba(255,255,255,0.95)]"
+        >
+          Extensions
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 gap-1 px-3 text-[13px] leading-[18px] font-normal text-[rgba(255,255,255,0.85)] hover:bg-transparent hover:text-[rgba(255,255,255,0.95)]"
+        >
+          Tools
+          <ChevronDown className="h-3.5 w-3.5" />
+        </Button>
+      </div>
     </div>
   );
 }
