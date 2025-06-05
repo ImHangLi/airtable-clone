@@ -64,8 +64,8 @@ export default function TableView({
   } | null>(null);
   const [savingStatus, setSavingStatus] = useState<string | null>(null);
   const [isAddColumnOpen, setIsAddColumnOpen] = useState(false);
-
-  // Draft row state for floating add button
+  const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
+  const [isAddRowHovered, setIsAddRowHovered] = useState(false);
   const [isDraftRowVisible, setIsDraftRowVisible] = useState(false);
   const [draftFocusedCell, setDraftFocusedCell] = useState<string | null>(null);
   const [newlyAddedRowId, setNewlyAddedRowId] = useState<string | null>(null);
@@ -109,37 +109,27 @@ export default function TableView({
     return visibility;
   }, [tableData.columns, hiddenColumns]);
 
-  // Notify parent when saving state changes
   useEffect(() => {
     onSavingStateChange?.(savingStatus);
   }, [savingStatus, onSavingStateChange]);
 
-  // Helper function to get cell highlight style
   const getCellHighlightStyle = useCallback(
     (columnId: string): React.CSSProperties => {
       if (!highlights || highlights.length === 0) return {};
-
       const highlight = highlights.find((h) => h.columnId === columnId);
       if (!highlight) return {};
-
-      return {
-        backgroundColor: highlight.color,
-      };
+      return { backgroundColor: highlight.color };
     },
     [highlights],
   );
 
-  // Helper function to get search highlight style
   const getSearchHighlightStyle = useCallback(
     (rowId: string, columnId: string): React.CSSProperties => {
       if (!searchMatches || searchMatches.length === 0) return {};
-
       const searchMatch = searchMatches.find(
         (match) => match.rowId === rowId && match.columnId === columnId,
       );
-
       if (!searchMatch) return {};
-
       return {
         backgroundColor: searchMatch.isCurrentTarget ? "#f1cf6b" : "#fff3d3",
       };
@@ -147,19 +137,15 @@ export default function TableView({
     [searchMatches],
   );
 
-  // Combined highlight style that prioritizes search over sort/filter
   const getCombinedHighlightStyle = useCallback(
     (rowId: string, columnId: string): React.CSSProperties => {
       const searchStyle = getSearchHighlightStyle(rowId, columnId);
       const cellStyle = getCellHighlightStyle(columnId);
-
-      // Search highlighting takes priority over sort/filter highlighting
       return searchStyle.backgroundColor ? searchStyle : cellStyle;
     },
     [getSearchHighlightStyle, getCellHighlightStyle],
   );
 
-  // Virtual row renderer
   const rowVirtualizer = useVirtualizer({
     count: tableData.rows.length,
     getScrollElement: () => parentRef.current,
@@ -167,8 +153,7 @@ export default function TableView({
     overscan: 20,
   });
 
-  // Search scrolling functionality - moved after rowVirtualizer definition
-  const { scrollToMatch: _scrollToMatch } = useSearchScrolling({
+  useSearchScrolling({
     currentTargetMatch,
     tableRows: tableData.rows,
     parentRef: parentRef as React.RefObject<HTMLDivElement>,
@@ -176,9 +161,6 @@ export default function TableView({
     rowHeight: CELL_CONFIG.height,
   });
 
-  // Note: _scrollToMatch is available for manual scrolling if needed
-
-  // Memoized update function for table meta
   const updateData = useCallback(
     async (rowId: string, columnId: string, value: string | number) => {
       setSavingStatus("Updating cell...");
@@ -448,19 +430,10 @@ export default function TableView({
     );
   }, [tableData.columns, columnVisibility]);
 
-  // Check if we should show the add row button - always show for easy access
   const shouldShowAddRowButton = useMemo(() => {
-    // Don't show if table is fetching next page (pagination loading)
-    // But keep showing during regular fetching to avoid flicker when adding rows
-    if (tableData.isFetchingNextPage) {
-      return false;
-    }
-
-    // Always show the add row button for better UX
-    return true;
+    return !tableData.isFetchingNextPage;
   }, [tableData.isFetchingNextPage]);
 
-  // Handle add row (existing functionality)
   const handleAddRow = useCallback(async () => {
     try {
       await tableActions.addRow();
@@ -470,12 +443,10 @@ export default function TableView({
     }
   }, [tableActions]);
 
-  // Handle floating add row button
   const handleFloatingAddRow = useCallback(() => {
     setIsDraftRowVisible(true);
   }, []);
 
-  // Handle draft row save with optimistic update and database mutation
   const handleDraftRowSave = useCallback(
     async (draftData: Record<string, string | number>) => {
       setIsDraftRowVisible(false);
@@ -483,11 +454,9 @@ export default function TableView({
       setSavingStatus("Creating row...");
 
       try {
-        // Create the row first
         const newRowId = await tableActions.addRow();
 
         if (newRowId) {
-          // Update cells with the draft data
           const updatePromises = Object.entries(draftData).map(
             ([columnId, value]) => {
               if (value !== "" && value !== null && value !== undefined) {
@@ -498,14 +467,11 @@ export default function TableView({
           );
 
           await Promise.all(updatePromises);
-
-          // Set the newly added row for highlighting
           setNewlyAddedRowId(newRowId);
 
-          // Scroll to the new row immediately after creation
           setTimeout(() => {
             if (parentRef.current) {
-              const rowIndex = tableData.rows.length; // New row will be at the end
+              const rowIndex = tableData.rows.length;
               const scrollTop = rowIndex * CELL_CONFIG.height;
               parentRef.current.scrollTo({
                 top: scrollTop,
@@ -514,7 +480,6 @@ export default function TableView({
             }
           }, 100);
 
-          // Clear the highlight after 1 second from when the scroll happens
           setTimeout(() => {
             setNewlyAddedRowId(null);
           }, 2000);
@@ -533,15 +498,62 @@ export default function TableView({
     [tableActions, tableData.rows.length],
   );
 
-  // Handle draft row cancel
   const handleDraftRowCancel = useCallback(() => {
     setIsDraftRowVisible(false);
     setDraftFocusedCell(null);
   }, []);
 
+  const getCellBackgroundColor = useCallback(
+    (
+      rowId: string,
+      columnId: string,
+      isRowBeingEdited: boolean,
+      isNewlyAdded: boolean,
+    ): string => {
+      const combinedHighlightStyle = getCombinedHighlightStyle(rowId, columnId);
+      const hasHighlight = !!combinedHighlightStyle.backgroundColor;
+      const isHovered =
+        hoveredRowId === rowId && !isRowBeingEdited && !isNewlyAdded;
+
+      if (hasHighlight) {
+        const baseColor = combinedHighlightStyle.backgroundColor as string;
+        if (isHovered) {
+          if (baseColor === "#f1cf6b") return "#efc455";
+          if (baseColor === "#fff3d3") return "#ffeaa3";
+          if (baseColor === "#CFF5D1") return "#b8e6c1";
+          if (baseColor === "#fff2ea") return "#f5e6d3";
+          return baseColor;
+        }
+        return baseColor;
+      }
+
+      if (isNewlyAdded) {
+        return isHovered ? "#c7d2fe" : "#dbeafe";
+      }
+
+      if (isRowBeingEdited) {
+        return "#f3f4f6";
+      }
+
+      if (isHovered) {
+        return "#f3f4f6";
+      }
+
+      return "white";
+    },
+    [getCombinedHighlightStyle, hoveredRowId],
+  );
+
   // Table View
   return (
     <div className="relative flex-1 overflow-hidden bg-[#f2f4f8]">
+      {/* Extension area */}
+      <div
+        className="absolute top-0 left-0 h-full border-r border-[#dee1e3] bg-gray-100"
+        style={{
+          width: CELL_CONFIG.rowNumberWidth,
+        }}
+      />
       {/* Main table scroll container */}
       <div
         ref={parentRef}
@@ -682,86 +694,27 @@ export default function TableView({
                     height: `${virtualRow.size}px`,
                     transform: `translateY(${virtualRow.start}px)`,
                     width: totalColumnWidth,
-                    backgroundColor: isNewlyAdded
-                      ? "#dbeafe" // blue-100 for newly added rows
-                      : isRowBeingEdited
-                        ? "#f3f4f6"
-                        : "white",
+                    backgroundColor: getCellBackgroundColor(
+                      row.original.id,
+                      row.getVisibleCells()[0]?.column.id ?? "",
+                      isRowBeingEdited,
+                      isNewlyAdded,
+                    ),
                     borderBottom: "1px solid #dee1e3",
                     transition: isNewlyAdded
                       ? "background-color 1s ease-out"
                       : "none",
                   }}
-                  onMouseOver={(e) => {
+                  onMouseEnter={() => {
                     if (
                       !isNewlyAdded &&
                       (!isAnyRowBeingEdited || isRowBeingEdited)
                     ) {
-                      e.currentTarget.style.backgroundColor = "#f3f4f6";
-
-                      // Update all cells in the row
-                      const allCells =
-                        e.currentTarget.querySelectorAll("[data-cell-id]");
-                      allCells.forEach((cell) => {
-                        if (cell instanceof HTMLElement) {
-                          cell.style.backgroundColor = "#f3f4f6";
-                        }
-                      });
-
-                      // Also update sticky cells
-                      const stickyRowNumber = e.currentTarget.querySelector(
-                        '[data-sticky="row-number"]',
-                      );
-                      const stickyPrimary = e.currentTarget.querySelector(
-                        '[data-sticky="primary-column"]',
-                      );
-                      if (
-                        stickyRowNumber &&
-                        stickyRowNumber instanceof HTMLElement
-                      ) {
-                        stickyRowNumber.style.backgroundColor = "#f3f4f6";
-                      }
-                      if (
-                        stickyPrimary &&
-                        stickyPrimary instanceof HTMLElement
-                      ) {
-                        stickyPrimary.style.backgroundColor = "#f3f4f6";
-                      }
+                      setHoveredRowId(row.original.id);
                     }
                   }}
-                  onMouseLeave={(e) => {
-                    if (!isRowBeingEdited && !isNewlyAdded) {
-                      e.currentTarget.style.backgroundColor = "white";
-
-                      // Reset all cells in the row
-                      const allCells =
-                        e.currentTarget.querySelectorAll("[data-cell-id]");
-                      allCells.forEach((cell) => {
-                        if (cell instanceof HTMLElement) {
-                          cell.style.backgroundColor = "white";
-                        }
-                      });
-
-                      // Also reset sticky cells
-                      const stickyRowNumber = e.currentTarget.querySelector(
-                        '[data-sticky="row-number"]',
-                      );
-                      const stickyPrimary = e.currentTarget.querySelector(
-                        '[data-sticky="primary-column"]',
-                      );
-                      if (
-                        stickyRowNumber &&
-                        stickyRowNumber instanceof HTMLElement
-                      ) {
-                        stickyRowNumber.style.backgroundColor = "white";
-                      }
-                      if (
-                        stickyPrimary &&
-                        stickyPrimary instanceof HTMLElement
-                      ) {
-                        stickyPrimary.style.backgroundColor = "white";
-                      }
-                    }
+                  onMouseLeave={() => {
+                    setHoveredRowId(null);
                   }}
                   onContextMenu={(e) => handleRowRightClick(e, row.original.id)}
                 >
@@ -770,14 +723,6 @@ export default function TableView({
                       const isEditing =
                         editingCell?.rowId === row.original.id &&
                         editingCell?.columnId === cell.column.id;
-
-                      // Get combined highlight style for this cell
-                      const combinedHighlightStyle = getCombinedHighlightStyle(
-                        row.original.id,
-                        cell.column.id,
-                      );
-                      const hasSearchHighlight =
-                        !!combinedHighlightStyle.backgroundColor;
 
                       return (
                         <div
@@ -793,7 +738,6 @@ export default function TableView({
                           style={{
                             ...baseCellStyle,
                             ...getCellWidth(cell.column.id === "rowNumber"),
-                            ...combinedHighlightStyle,
                             borderRight: isEditing
                               ? "1px solid #186ce4"
                               : "1px solid #dee1e3",
@@ -808,11 +752,12 @@ export default function TableView({
                             boxShadow: isEditing
                               ? "0 0 0 1px #186ce4 inset"
                               : "none",
-                            backgroundColor: isNewlyAdded
-                              ? "#dbeafe"
-                              : isRowBeingEdited
-                                ? "#f3f4f6"
-                                : "white",
+                            backgroundColor: getCellBackgroundColor(
+                              row.original.id,
+                              cell.column.id,
+                              isEditing,
+                              isNewlyAdded,
+                            ),
                             transition: isNewlyAdded
                               ? "background-color 0.5s ease-out"
                               : "none",
@@ -821,13 +766,12 @@ export default function TableView({
                               position: "sticky",
                               left: 0,
                               zIndex: isEditing ? 20 : 12,
-                              backgroundColor: hasSearchHighlight
-                                ? combinedHighlightStyle.backgroundColor
-                                : isNewlyAdded
-                                  ? "#dbeafe"
-                                  : isRowBeingEdited
-                                    ? "#f3f4f6"
-                                    : "white",
+                              backgroundColor: getCellBackgroundColor(
+                                row.original.id,
+                                cell.column.id,
+                                isEditing,
+                                isNewlyAdded,
+                              ),
                               borderBottom: "1px solid #dee1e3",
                               transition: isNewlyAdded
                                 ? "background-color 0.5s ease-out"
@@ -838,13 +782,12 @@ export default function TableView({
                               position: "sticky",
                               left: CELL_CONFIG.rowNumberWidth,
                               zIndex: isEditing ? 20 : 12,
-                              backgroundColor: hasSearchHighlight
-                                ? combinedHighlightStyle.backgroundColor
-                                : isNewlyAdded
-                                  ? "#dbeafe"
-                                  : isRowBeingEdited
-                                    ? "#f3f4f6"
-                                    : "white",
+                              backgroundColor: getCellBackgroundColor(
+                                row.original.id,
+                                cell.column.id,
+                                isEditing,
+                                isNewlyAdded,
+                              ),
                               borderBottom: "1px solid #dee1e3",
                               transition: isNewlyAdded
                                 ? "background-color 0.5s ease-out"
@@ -873,71 +816,32 @@ export default function TableView({
                   transform: `translateY(${rowVirtualizer.getTotalSize()}px)`,
                   width: totalColumnWidth,
                   borderBottom: "1px solid #dee1e3",
-                  backgroundColor: "white",
+                  backgroundColor: isAddRowHovered ? "#f3f4f6" : "white",
                   transition: "background-color 0.1s ease",
                 }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "#f3f4f6"; // gray-100
-                  // Also update sticky cells in add row
-                  const stickyRowNumber = e.currentTarget.querySelector(
-                    '[data-sticky="add-row-number"]',
-                  );
-                  const stickyPrimary = e.currentTarget.querySelector(
-                    '[data-sticky="add-primary-column"]',
-                  );
-                  if (
-                    stickyRowNumber &&
-                    stickyRowNumber instanceof HTMLElement
-                  ) {
-                    stickyRowNumber.style.backgroundColor = "#f3f4f6";
-                  }
-                  if (stickyPrimary && stickyPrimary instanceof HTMLElement) {
-                    stickyPrimary.style.backgroundColor = "#f3f4f6";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "white";
-                  // Also reset sticky cells in add row
-                  const stickyRowNumber = e.currentTarget.querySelector(
-                    '[data-sticky="add-row-number"]',
-                  );
-                  const stickyPrimary = e.currentTarget.querySelector(
-                    '[data-sticky="add-primary-column"]',
-                  );
-                  if (
-                    stickyRowNumber &&
-                    stickyRowNumber instanceof HTMLElement
-                  ) {
-                    stickyRowNumber.style.backgroundColor = "white";
-                  }
-                  if (stickyPrimary && stickyPrimary instanceof HTMLElement) {
-                    stickyPrimary.style.backgroundColor = "white";
-                  }
-                }}
+                onMouseEnter={() => setIsAddRowHovered(true)}
+                onMouseLeave={() => setIsAddRowHovered(false)}
                 onClick={handleAddRow}
                 title="Add row"
               >
                 <div className="flex">
-                  {/* Row number column with Add Row icon */}
                   <div
                     className="justify-left relative flex items-center"
                     data-sticky="add-row-number"
                     style={{
                       ...baseCellStyle,
-                      ...getCellWidth(true), // true for row number column
+                      ...getCellWidth(true),
                       borderRight: "1px solid #dee1e3",
-                      // Make add row button's row number cell sticky
                       position: "sticky",
                       left: 0,
                       zIndex: 12,
-                      backgroundColor: "white",
+                      backgroundColor: isAddRowHovered ? "#f3f4f6" : "white",
                       borderBottom: "1px solid #dee1e3",
                     }}
                   >
                     <Plus className="ml-1 h-4 w-4 text-gray-400" />
                   </div>
 
-                  {/* Border extension for row number column */}
                   <div
                     className="absolute"
                     style={{
@@ -949,7 +853,6 @@ export default function TableView({
                     }}
                   />
 
-                  {/* Empty cells for each visible column */}
                   {tableData.columns
                     .filter((column) => columnVisibility[column.id])
                     .map((column, index) => (
@@ -963,12 +866,13 @@ export default function TableView({
                           ...baseCellStyle,
                           ...getCellWidth(false),
                           borderRight: "1px solid #dee1e3",
-                          // Make first data column sticky in add row
                           ...(index === 0 && {
                             position: "sticky",
                             left: CELL_CONFIG.rowNumberWidth,
                             zIndex: 12,
-                            backgroundColor: "white",
+                            backgroundColor: isAddRowHovered
+                              ? "#f3f4f6"
+                              : "white",
                             borderBottom: "1px solid #dee1e3",
                           }),
                         }}

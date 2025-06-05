@@ -7,6 +7,7 @@ import {
   Group,
   Share2,
   Palette,
+  Users,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { useState, useCallback, memo } from "react";
@@ -145,6 +146,7 @@ export default memo(function ViewControl({
             <span className="text-[13px] text-black">
               {currentView?.name ?? "Grid view"}
             </span>
+            <Users className="h-4 w-4" />
             <ChevronDown className="h-4 w-4" />
           </Button>
         </div>
@@ -279,8 +281,7 @@ export default memo(function ViewControl({
         <SearchInput
           onChange={setSearchQuery}
           disabled={!!loadingStatus}
-          tableRows={tableData?.rows ?? []}
-          tableColumns={tableData?.columns ?? []}
+          backendSearchMatches={tableData?.searchMatches ?? []}
           onSearchMatches={onSearchMatches}
         />
       </div>

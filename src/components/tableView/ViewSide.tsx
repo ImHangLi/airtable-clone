@@ -11,6 +11,8 @@ import {
   List,
   GanttChart,
   FormInput,
+  Check,
+  Star,
 } from "lucide-react";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
@@ -263,7 +265,7 @@ function ViewSide({ tableId, baseId, currentViewId }: ViewSideProps) {
                     key={view.id}
                     variant="ghost"
                     size="sm"
-                    className={`h-8 w-full justify-start gap-2 rounded px-2 text-[13px] font-normal ${
+                    className={`group h-8 w-full justify-between gap-2 rounded px-2 text-[13px] font-normal ${
                       isActive
                         ? "bg-blue-100 text-blue-900 hover:bg-blue-100"
                         : "text-gray-700 hover:bg-gray-100"
@@ -278,8 +280,14 @@ function ViewSide({ tableId, baseId, currentViewId }: ViewSideProps) {
                     }
                     disabled={isTemp}
                   >
-                    <Grid className="h-4 w-4 flex-shrink-0 text-blue-600" />
-                    <span className="truncate">{view.name}</span>
+                    <div className="flex items-center gap-2">
+                      <Grid className="h-4 w-4 flex-shrink-0 text-blue-600 group-hover:hidden" />
+                      <Star className="hidden h-4 w-4 flex-shrink-0 text-gray-500 group-hover:block" />
+                      <span className="truncate">{view.name}</span>
+                    </div>
+                    {isActive && (
+                      <Check className="h-3.5 w-3.5 text-gray-500 group-hover:hidden" />
+                    )}
                   </Button>
                 );
               })
@@ -292,7 +300,7 @@ function ViewSide({ tableId, baseId, currentViewId }: ViewSideProps) {
         <Separator className="mx-auto h-[1px] w-full bg-gray-200" />
         <div className="px-2">
           <div
-            className="flex items-center justify-between gap-2 py-[11px] pl-1 cursor-pointer"
+            className="flex cursor-pointer items-center justify-between gap-2 py-[11px] pl-1"
             onClick={() => setIsCreateOpen(!isCreateOpen)}
           >
             <span className="text-[15px] font-medium text-gray-700">
@@ -312,7 +320,7 @@ function ViewSide({ tableId, baseId, currentViewId }: ViewSideProps) {
           </div>
 
           {isCreateOpen && (
-            <div className=" pb-4">
+            <div className="pb-4">
               <div className="flex items-center justify-between pr-1 hover:bg-gray-100">
                 <Button
                   variant="ghost"
