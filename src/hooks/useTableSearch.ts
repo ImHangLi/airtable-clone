@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useDebounce } from "./useDebounce";
-import type { TableRow, TableColumn } from "./useTableData";
+import type { SearchMatch as BackendSearchMatch } from "./useTableData";
 
 // Types for search matches and navigation
 export interface SearchMatch {
@@ -21,8 +21,7 @@ interface UseTableSearchOptions {
   maxLength?: number;
   onSearch?: (value: string) => void;
   onSearchMatches?: (navigationState: SearchNavigationState) => void;
-  tableRows?: TableRow[];
-  tableColumns?: TableColumn[];
+  backendSearchMatches?: BackendSearchMatch[];
 }
 
 interface UseTableSearchReturn {
@@ -41,8 +40,7 @@ export function useTableSearch({
   maxLength = 100,
   onSearch,
   onSearchMatches,
-  tableRows = [],
-  tableColumns = [],
+  backendSearchMatches = [],
 }: UseTableSearchOptions = {}): UseTableSearchReturn {
   const [searchValue, setSearchValue] = useState("");
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
@@ -57,38 +55,20 @@ export function useTableSearch({
     onSearchMatchesRef.current = onSearchMatches;
   }, [onSearch, onSearchMatches]);
 
-  // Calculate search matches when search value or table data changes
+  // Use backend search matches - all search is now handled at database level
   const searchMatches = useMemo(() => {
-    if (
-      !debouncedSearchValue.trim() ||
-      !tableRows.length ||
-      !tableColumns.length
-    ) {
+    if (!debouncedSearchValue.trim()) {
       return [];
     }
 
-    const matches: SearchMatch[] = [];
-    const searchTerm = debouncedSearchValue.toLowerCase().trim();
-
-    tableRows.forEach((row) => {
-      tableColumns.forEach((column) => {
-        const cellValue = row.cells[column.id];
-        if (cellValue != null) {
-          const cellText = String(cellValue).toLowerCase();
-          if (cellText.includes(searchTerm)) {
-            matches.push({
-              rowId: row.id,
-              columnId: column.id,
-              cellValue: String(cellValue),
-              isCurrentTarget: false,
-            });
-          }
-        }
-      });
-    });
-
-    return matches;
-  }, [debouncedSearchValue, tableRows, tableColumns]);
+    // Convert backend search matches to local format with navigation state
+    return backendSearchMatches.map((match) => ({
+      rowId: match.rowId,
+      columnId: match.columnId,
+      cellValue: match.cellValue,
+      isCurrentTarget: false,
+    }));
+  }, [debouncedSearchValue, backendSearchMatches]);
 
   // Update current target match when matches or index changes - stabilized with JSON comparison
   const searchNavigationState = useMemo(() => {

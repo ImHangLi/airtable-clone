@@ -21,17 +21,23 @@ export interface QueryParams {
   search?: string;
 }
 
+export interface SearchMatch {
+  rowId: string;
+  columnId: string;
+  cellValue: string;
+}
+
 export interface TableData {
   name: string;
   columns: TableColumn[];
   rows: TableRow[];
+  searchMatches: SearchMatch[];
   totalRows: number;
   totalDBRowCount: number;
   hasNextPage?: boolean;
   fetchNextPage?: () => void;
   isFetching?: boolean;
   isFetchingNextPage?: boolean;
-  isSearchResult?: boolean;
   isFilterResult?: boolean;
 }
 
@@ -72,7 +78,7 @@ export function useTableData({
   const getQueryParams = useCallback(
     () => ({
       tableId,
-      limit: hasSearch ? 50 : 150,
+      limit: 150, // No longer reduce limit for search since we don't filter on backend
       sorting: activeSorting,
       filtering: completeFilters,
       search: hasSearch ? debouncedSearch : undefined,
@@ -98,10 +104,15 @@ export function useTableData({
     return infiniteQuery.data.pages.flatMap((page) => page.items);
   }, [infiniteQuery.data?.pages]);
 
+  // Flatten all search matches from all pages
+  const allSearchMatches = useMemo(() => {
+    if (!infiniteQuery.data?.pages) return [];
+    return infiniteQuery.data.pages.flatMap((page) => page.searchMatches ?? []);
+  }, [infiniteQuery.data?.pages]);
+
   // Get table info from first page
   const tableInfo = infiniteQuery.data?.pages[0]?.tableInfo;
   const totalRowCount = infiniteQuery.data?.pages[0]?.totalRowCount ?? 0;
-  const isSearchResult = infiniteQuery.data?.pages[0]?.isSearchResult ?? false;
 
   // Extract specific query properties to avoid re-renders from infiniteQuery object changes
   const hasNextPage = infiniteQuery.hasNextPage;
@@ -147,20 +158,20 @@ export function useTableData({
         is_primary: col.is_primary,
       })),
       rows: allRows,
+      searchMatches: allSearchMatches,
       totalRows: allRows.length,
       totalDBRowCount: totalRowCount,
       hasNextPage,
       fetchNextPage,
       isFetching,
       isFetchingNextPage,
-      isSearchResult,
       isFilterResult,
     };
   }, [
     tableInfo,
     allRows,
+    allSearchMatches,
     totalRowCount,
-    isSearchResult,
     isFilterResult,
     hasNextPage,
     isFetching,

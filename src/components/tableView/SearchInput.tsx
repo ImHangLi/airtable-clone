@@ -1,28 +1,26 @@
 import { Input } from "~/components/ui/input";
 import { Search, X, ChevronUp, ChevronDown } from "lucide-react";
 import { useTableSearch } from "~/hooks/useTableSearch";
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
 import type { SearchNavigationState } from "~/hooks/useTableSearch";
-import type { TableRow, TableColumn } from "~/hooks/useTableData";
+import type { SearchMatch as BackendSearchMatch } from "~/hooks/useTableData";
 
 interface SearchInputProps {
   onChange: (value: string) => void;
   disabled?: boolean;
-  tableRows?: TableRow[];
-  tableColumns?: TableColumn[];
+  backendSearchMatches?: BackendSearchMatch[];
   onSearchMatches?: (navigationState: SearchNavigationState) => void;
 }
 
 export function SearchInput({
   onChange,
   disabled = false,
-  tableRows = [],
-  tableColumns = [],
+  backendSearchMatches = [],
   onSearchMatches,
 }: SearchInputProps) {
   // State to track if the search dropdown is open
@@ -33,10 +31,6 @@ export function SearchInput({
 
   // Ref to focus the input when opened
   const inputRef = useRef<HTMLInputElement>(null);
-
-  // Memoize table data to prevent unnecessary re-renders
-  const stableTableRows = useMemo(() => tableRows, [tableRows]);
-  const stableTableColumns = useMemo(() => tableColumns, [tableColumns]);
 
   const {
     searchValue,
@@ -50,8 +44,7 @@ export function SearchInput({
   } = useTableSearch({
     onSearch: onChange,
     onSearchMatches,
-    tableRows: stableTableRows,
-    tableColumns: stableTableColumns,
+    backendSearchMatches,
   });
 
   // Focus management - maintain focus during search operations

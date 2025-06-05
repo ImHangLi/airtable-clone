@@ -113,20 +113,6 @@ export const dataRouter = createTRPCRouter({
         // Build base conditions
         const baseConditions: SQL[] = [eq(rows.table_id, tableId)];
 
-        if (hasSearch && searchTerm) {
-          const searchPattern = `%${searchTerm}%`;
-          const isNumericSearch = !isNaN(Number(searchTerm));
-
-          baseConditions.push(sql`EXISTS (
-            SELECT 1 FROM ${cells} c
-            WHERE c.row_id = ${rows.id}
-            AND (
-              c.value_text ILIKE ${searchPattern}
-              ${isNumericSearch ? sql`OR c.value_number = ${Number(searchTerm)}` : sql``}
-            )
-          )`);
-        }
-
         // Add filter conditions if provided
         if (filtering && filtering.length > 0) {
           // Sort filters by order to ensure proper logical operator application
@@ -306,11 +292,6 @@ export const dataRouter = createTRPCRouter({
                       WHERE c.row_id = ${rows.id}
                       AND c.column_id = ${filter.columnId}
                       AND c.value_number = ${numValue}
-                    ) AND EXISTS (
-                      SELECT 1 FROM ${cells} c
-                      WHERE c.row_id = ${rows.id}
-                      AND c.column_id = ${filter.columnId}
-                      AND c.value_number IS NOT NULL
                     )`;
                   }
                 } else {
@@ -319,11 +300,6 @@ export const dataRouter = createTRPCRouter({
                     WHERE c.row_id = ${rows.id}
                     AND c.column_id = ${filter.columnId}
                     AND c.value_text = ${value}
-                  ) AND EXISTS (
-                    SELECT 1 FROM ${cells} c
-                    WHERE c.row_id = ${rows.id}
-                    AND c.column_id = ${filter.columnId}
-                    AND c.value_text IS NOT NULL
                   )`;
                 }
                 break;
@@ -336,11 +312,6 @@ export const dataRouter = createTRPCRouter({
                     WHERE c.row_id = ${rows.id}
                     AND c.column_id = ${filter.columnId}
                     AND c.value_text ILIKE ${pattern}
-                  ) AND EXISTS (
-                    SELECT 1 FROM ${cells} c
-                    WHERE c.row_id = ${rows.id}
-                    AND c.column_id = ${filter.columnId}
-                    AND c.value_text IS NOT NULL
                   )`;
                 }
                 break;
@@ -413,11 +384,78 @@ export const dataRouter = createTRPCRouter({
           cells: cellsByRowId.get(row.id) ?? {},
         }));
 
+        // Calculate search matches at database level if there's a search query
+        let searchMatches: Array<{
+          rowId: string;
+          columnId: string;
+          cellValue: string;
+        }> = [];
+
+        if (hasSearch && searchTerm && rowIds.length > 0) {
+          const searchPattern = `%${searchTerm}%`;
+
+          // Get all matching cells without ordering first
+          const allMatches = await ctx.db
+            .select({
+              row_id: cells.row_id,
+              column_id: cells.column_id,
+              value_text: cells.value_text,
+              value_number: cells.value_number,
+            })
+            .from(cells)
+            .where(
+              and(
+                inArray(cells.row_id, rowIds),
+                sql`(
+                  (${cells.value_text} ILIKE ${searchPattern} AND ${cells.value_text} IS NOT NULL AND ${cells.value_text} != '') OR
+                  (CAST(${cells.value_number} AS TEXT) ILIKE ${searchPattern} AND ${cells.value_number} IS NOT NULL)
+                )`,
+              ),
+            );
+
+          // Create maps for ordering
+          const rowOrderMap = new Map<string, number>();
+          rowIds.forEach((rowId, index) => {
+            rowOrderMap.set(rowId, index);
+          });
+
+          const columnOrderMap = new Map<string, number>();
+          tableColumns.forEach((column, index) => {
+            columnOrderMap.set(column.id, index);
+          });
+
+          // Sort matches: first by row position (top to bottom), then by column position (left to right)
+          const sortedMatches = allMatches
+            .map((match) => ({
+              row_id: match.row_id,
+              column_id: match.column_id,
+              value_text: match.value_text,
+              value_number: match.value_number,
+              rowOrder: rowOrderMap.get(match.row_id) ?? 999999,
+              columnOrder: columnOrderMap.get(match.column_id) ?? 999999,
+            }))
+            .sort((a, b) => {
+              // First sort by row (top to bottom)
+              if (a.rowOrder !== b.rowOrder) {
+                return a.rowOrder - b.rowOrder;
+              }
+              // Then sort by column (left to right)
+              return a.columnOrder - b.columnOrder;
+            });
+
+          // Format the matches
+          searchMatches = sortedMatches.map((match) => ({
+            rowId: match.row_id,
+            columnId: match.column_id,
+            cellValue: match.value_text ?? String(match.value_number),
+          }));
+        }
+
         // Get total row count efficiently
         let totalRowCount: number;
         const hasFilters = filtering && filtering.length > 0;
 
-        if (hasSearch || hasFilters) {
+        if (hasFilters) {
           const countResult = await ctx.db
             .select({ count: sql<number>`count(*)` })
             .from(rows)
@@ -437,9 +475,9 @@ export const dataRouter = createTRPCRouter({
             columns: tableColumns,
           },
           items: rowsWithCells,
-          nextCursor, // Return as number for tRPC infinite query
+          searchMatches,
+          nextCursor,
           totalRowCount,
-          isSearchResult: hasSearch,
           isFilterResult: hasFilters,
         };
       } catch (error) {
