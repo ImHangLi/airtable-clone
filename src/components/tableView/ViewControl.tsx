@@ -1,22 +1,18 @@
-import { ChevronDown, Grid, Menu, Plus, Database, Loader2 } from "lucide-react";
+import {
+  ChevronDown,
+  Grid,
+  Menu,
+  Database,
+  Loader2,
+  Group,
+  Share2,
+  Palette,
+} from "lucide-react";
 import { Button } from "../ui/button";
-import { useState, useCallback, useEffect, memo } from "react";
-import { useForm } from "react-hook-form";
+import { useState, useCallback, memo } from "react";
 import { toast } from "sonner";
 import { api } from "~/trpc/react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "~/components/ui/dropdown-menu";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormMessage,
-} from "~/components/ui/form";
-import type { TableActions, TableData } from "~/hooks/useTableData";
+import type { TableData } from "~/hooks/useTableData";
 import { SearchInput } from "./SearchInput";
 import SortMenu from "./SortMenu";
 import FilterMenu from "./FilterMenu";
@@ -32,7 +28,6 @@ interface ViewControlProps {
   tableId: string;
   baseId: string;
   currentViewId: string;
-  tableActions: TableActions;
   tableData?: TableData;
   loadingStatus?: string | null;
   setSearchQuery: (query: string) => void;
@@ -51,129 +46,10 @@ interface ViewControlProps {
   onSearchMatches?: (navigationState: SearchNavigationState) => void;
 }
 
-// Add column form component
-function AddColumnForm({
-  onAddColumn,
-  isOpen,
-  setIsOpen,
-}: {
-  onAddColumn: (name: string, type: "text" | "number") => Promise<void>;
-  isOpen: boolean;
-  setIsOpen: (open: boolean) => void;
-}) {
-  const form = useForm({
-    defaultValues: {
-      name: "",
-      type: "text" as "text" | "number",
-    },
-  });
-
-  // Reset form when opening
-  useEffect(() => {
-    if (isOpen) {
-      form.reset({ name: "", type: "text" });
-    }
-  }, [form, isOpen]);
-
-  const onSubmit = useCallback(
-    async (data: { name: string; type: "text" | "number" }) => {
-      const trimmedName = data.name.trim();
-      if (!trimmedName) return;
-
-      setIsOpen(false);
-
-      try {
-        await onAddColumn(trimmedName, data.type);
-      } catch (error) {
-        console.error("Failed to add column:", error);
-        toast.error("Failed to add column");
-      }
-    },
-    [onAddColumn, setIsOpen],
-  );
-
-  const handleCancel = useCallback(() => {
-    form.reset({ name: "", type: "text" });
-    setIsOpen(false);
-  }, [form, setIsOpen]);
-
-  const fieldValue = form.watch("name");
-  const isFieldEmpty = !fieldValue?.trim();
-
-  return (
-    <DropdownMenuContent className="w-64 p-4" align="end">
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-          <FormField
-            control={form.control}
-            name="name"
-            rules={{
-              required: "Please enter a column name",
-              validate: (value) =>
-                value.trim() !== "" || "Please enter a column name",
-            }}
-            render={({ field }) => (
-              <FormItem>
-                <FormControl>
-                  <input
-                    {...field}
-                    className="w-full rounded border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-400 focus:outline-none"
-                    placeholder="Column name"
-                    autoFocus
-                  />
-                </FormControl>
-                <FormMessage className="text-xs text-red-500" />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="type"
-            render={({ field }) => (
-              <FormItem>
-                <FormControl>
-                  <select
-                    {...field}
-                    className="w-full rounded border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-400 focus:outline-none"
-                  >
-                    <option value="text">Text</option>
-                    <option value="number">Number</option>
-                  </select>
-                </FormControl>
-                <FormMessage className="text-xs text-red-500" />
-              </FormItem>
-            )}
-          />
-          <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleCancel}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              variant="outline"
-              size="sm"
-              disabled={isFieldEmpty}
-              className="h-8 w-24 bg-blue-600 text-[13px] font-normal text-white hover:bg-blue-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Add Column
-            </Button>
-          </div>
-        </form>
-      </Form>
-    </DropdownMenuContent>
-  );
-}
-
 export default memo(function ViewControl({
   tableId,
   baseId,
   currentViewId,
-  tableActions,
   tableData,
   loadingStatus = null,
   setSearchQuery,
@@ -191,7 +67,6 @@ export default memo(function ViewControl({
   onToggleViewSide,
   onSearchMatches,
 }: ViewControlProps) {
-  const [isAddColumnOpen, setIsAddColumnOpen] = useState(false);
   const [isAddingManyRows, setIsAddingManyRows] = useState(false);
   const utils = api.useUtils();
 
@@ -230,29 +105,6 @@ export default memo(function ViewControl({
       setIsAddingManyRows(false);
     },
   });
-
-  // Handle add single row
-  const handleAddRow = useCallback(async () => {
-    try {
-      await tableActions.addRow();
-    } catch (error) {
-      console.error("Failed to add row:", error);
-      toast.error("Failed to add row");
-    }
-  }, [tableActions]);
-
-  // Handle add column
-  const handleAddColumn = useCallback(
-    async (name: string, type: "text" | "number") => {
-      try {
-        await tableActions.addColumn(name, type);
-      } catch (error) {
-        console.error("Failed to add column:", error);
-        toast.error("Failed to add column");
-      }
-    },
-    [tableActions],
-  );
 
   // Handle add 100k rows
   const handleAddManyRows = useCallback(() => {
@@ -297,7 +149,7 @@ export default memo(function ViewControl({
           </Button>
         </div>
 
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-1.5">
           <HiddenColumnsMenu
             columns={tableData?.columns ?? []}
             hiddenColumns={hiddenColumns}
@@ -313,54 +165,61 @@ export default memo(function ViewControl({
             onHighlightChange={onFilterHighlightChange}
           />
 
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 rounded px-2 text-[13px] font-normal text-gray-700 hover:bg-gray-100"
+          >
+            <Group className="h-4 w-4" />
+            Group
+          </Button>
+
           <SortMenu
             columns={tableData?.columns ?? []}
             sorting={sorting}
             onSortingChange={onSortingChange}
             onHighlightChange={onSortHighlightChange}
           />
+
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 rounded px-2 text-[13px] font-normal text-gray-700 hover:bg-gray-100"
+          >
+            <Palette className="h-4 w-4" />
+            Color
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 rounded px-2 text-[13px] font-normal text-gray-700 hover:bg-gray-100"
+          >
+            <svg width="16" height="16" viewBox="0 0 48 48">
+              <path
+                fill="none"
+                stroke="gray"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="4"
+                d="m16 35l-6 6l-6-6m12-22l-6-6l-6 6m6-6v34M44 9H22m14 10H22m22 10H22m14 10H22"
+              />
+            </svg>
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 rounded px-2 text-[13px] font-normal text-gray-700 hover:bg-gray-100"
+          >
+            <Share2 className="h-4 w-4" />
+            Share and sync
+          </Button>
         </div>
 
         {/* Action buttons section */}
         <div className="h-4 w-px bg-gray-200" />
         <div className="flex items-center gap-0.5">
-          {/* Add Row Button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1.5 rounded px-2 text-sm font-normal text-gray-700 hover:bg-gray-100"
-            onClick={handleAddRow}
-            disabled={!!loadingStatus}
-            title="Adds a row to the table"
-          >
-            <Plus className="h-4 w-4" />
-            <p className="hidden text-[13px] md:block">Add row</p>
-          </Button>
-
-          {/* Add Column Button */}
-          <DropdownMenu
-            open={isAddColumnOpen}
-            onOpenChange={setIsAddColumnOpen}
-          >
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 gap-1.5 rounded p-3 text-sm font-normal text-gray-700 hover:bg-gray-100"
-                disabled={!!loadingStatus}
-                title="Adds a column to the table"
-              >
-                <Plus className="h-4 w-4" />
-                <p className="hidden text-[13px] md:block">Add column</p>
-              </Button>
-            </DropdownMenuTrigger>
-            <AddColumnForm
-              onAddColumn={handleAddColumn}
-              isOpen={isAddColumnOpen}
-              setIsOpen={setIsAddColumnOpen}
-            />
-          </DropdownMenu>
-
           {/* Add 100k Rows Button */}
           <Button
             variant="ghost"

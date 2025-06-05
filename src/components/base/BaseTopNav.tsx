@@ -183,7 +183,7 @@ export default function BaseTopNav({
               <Button
                 variant="ghost"
                 size="sm"
-                className="mr-2 ml-1 h-7 rounded-full px-3 text-[13px] leading-[1.5] font-normal text-white transition-colors hover:bg-[rgba(0,0,0,0.15)] hover:text-white"
+                className="mr-2 ml-1 h-7 rounded-full px-3 text-[13px] leading-[1.5] font-normal text-white transition-colors bg-[rgba(0,0,0,0.15)] hover:bg-[rgba(0,0,0,0.15)] hover:text-white"
               >
                 Data
               </Button>

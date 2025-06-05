@@ -25,6 +25,9 @@ import { RowContextMenu } from "./RowContextMenu";
 import { createCellRenderer } from "./cellRenderers";
 import { CELL_CONFIG, baseCellStyle } from "./constants";
 import { useSearchScrolling } from "~/hooks/useSearchScrolling";
+import { DropdownMenu, DropdownMenuTrigger } from "../ui/dropdown-menu";
+import AddColumnForm from "./AddcolumnForm";
+import { Plus } from "lucide-react";
 
 interface TableViewProps {
   tableData: TableData;
@@ -58,6 +61,7 @@ export default function TableView({
     columnId: string;
   } | null>(null);
   const [savingStatus, setSavingStatus] = useState<string | null>(null);
+  const [isAddColumnOpen, setIsAddColumnOpen] = useState(false);
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -230,6 +234,20 @@ export default function TableView({
       }));
     }
   }, [savingStatus]);
+
+  // Handle add column
+  const handleAddColumn = useCallback(
+    async (name: string, type: "text" | "number") => {
+      try {
+        await tableActions.addColumn(name, type);
+        setIsAddColumnOpen(false);
+      } catch (error) {
+        console.error("Failed to add column:", error);
+        toast.error("Failed to add column");
+      }
+    },
+    [tableActions],
+  );
 
   // Handle column header click
   const handleColumnHeaderRightClick = useCallback(
@@ -416,9 +434,31 @@ export default function TableView({
     );
   }, [tableData.columns, columnVisibility]);
 
+  // Check if we should show the add row button - always show for easy access
+  const shouldShowAddRowButton = useMemo(() => {
+    // Don't show if table is loading
+    if (tableData.isFetching || tableData.isFetchingNextPage) {
+      return false;
+    }
+
+    // Always show the add row button for better UX when not loading
+    return true;
+  }, [tableData.isFetching, tableData.isFetchingNextPage]);
+
+  // Handle add row
+  const handleAddRow = useCallback(async () => {
+    try {
+      await tableActions.addRow();
+    } catch (error) {
+      console.error("Failed to add row:", error);
+      toast.error("Failed to add row");
+    }
+  }, [tableActions]);
+
+  // Table View
   return (
-    <div className="relative flex-1 overflow-hidden bg-gray-50">
-      {/* Shared horizontal scroll container */}
+    <div className="relative flex-1 overflow-hidden bg-[#f2f4f8]">
+      {/* Main table scroll container */}
       <div
         ref={parentRef}
         className="h-full overflow-auto"
@@ -426,18 +466,21 @@ export default function TableView({
       >
         <div
           style={{
-            width: totalColumnWidth,
+            width: "100%", // Take full width to allow header extension
+            minWidth: totalColumnWidth + CELL_CONFIG.defaultWidth / 2 + 120, // Add 120px extra scrollable space
             minHeight: "100%",
+            paddingBottom: "120px",
           }}
         >
           {/* Header */}
           <div
-            className="sticky top-0 z-10 bg-gray-100 shadow-sm"
+            className="sticky top-0 z-10 bg-gray-100"
             style={{
-              borderBottom: "1px solid #cccccc",
+              borderBottom: "1px solid #dee1e3",
             }}
           >
             <div className="flex">
+              {/* Existing table headers */}
               {table.getHeaderGroups().map((headerGroup) =>
                 headerGroup.headers.map((header) => (
                   <div
@@ -446,7 +489,21 @@ export default function TableView({
                     style={{
                       ...baseCellStyle,
                       ...getCellWidth(header.id === "rowNumber"),
-                      borderRight: "1px solid #cccccc",
+                      borderRight: "1px solid #dee1e3",
+                      // Make row number column sticky
+                      ...(header.id === "rowNumber" && {
+                        position: "sticky",
+                        left: 0,
+                        zIndex: 15,
+                        backgroundColor: "rgb(243, 244, 246)", // Same as bg-gray-100
+                      }),
+                      // Make first data column (primary) sticky
+                      ...(header.column.getIndex() === 1 && {
+                        position: "sticky",
+                        left: CELL_CONFIG.rowNumberWidth,
+                        zIndex: 15,
+                        backgroundColor: "rgb(243, 244, 246)", // Same as bg-gray-100
+                      }),
                     }}
                   >
                     {header.isPlaceholder ? null : (
@@ -460,14 +517,69 @@ export default function TableView({
                   </div>
                 )),
               )}
+
+              {/* Add Column Button */}
+              <div
+                className="flex cursor-pointer items-center justify-center border-r bg-gray-100 transition-colors hover:bg-gray-50"
+                style={{
+                  ...baseCellStyle,
+                  width: CELL_CONFIG.defaultWidth / 2,
+                  borderColor: "#dee1e3",
+                  // Make add column button sticky
+                  position: "sticky",
+                  left: CELL_CONFIG.rowNumberWidth + CELL_CONFIG.defaultWidth,
+                  zIndex: 15,
+                }}
+              >
+                <DropdownMenu
+                  open={isAddColumnOpen}
+                  onOpenChange={setIsAddColumnOpen}
+                >
+                  <DropdownMenuTrigger asChild>
+                    <div
+                      className="flex h-full w-full items-center justify-center rounded text-gray-600"
+                      title="Add column"
+                    >
+                      <Plus className="h-4 w-4 text-gray-600" />
+                    </div>
+                  </DropdownMenuTrigger>
+                  <AddColumnForm
+                    onAddColumn={handleAddColumn}
+                    isOpen={isAddColumnOpen}
+                    setIsOpen={setIsAddColumnOpen}
+                  />
+                </DropdownMenu>
+              </div>
+
+              {/* Extension area to fill remaining space to the right */}
+              <div
+                className="flex-1 bg-white"
+                style={{
+                  ...baseCellStyle,
+                  borderRight: "none",
+                }}
+              />
             </div>
           </div>
 
-          {/* Virtualized Table Body */}
+          {/* Background area for the extension column */}
+          <div
+            className="absolute bg-[#f2f4f8]"
+            style={{
+              top: "33px", // Start after header
+              left: totalColumnWidth + CELL_CONFIG.defaultWidth / 2,
+              right: 0,
+              bottom: 0,
+              zIndex: 1,
+            }}
+          />
+
+          {/* Virtualized Table Body - no changes to existing rows */}
           <div
             style={{
               height: `${rowVirtualizer.getTotalSize()}px`,
               position: "relative",
+              zIndex: 2, // Ensure rows are above background
             }}
           >
             {rowVirtualizer.getVirtualItems().map((virtualRow) => {
@@ -475,16 +587,66 @@ export default function TableView({
               if (!row) return null;
 
               const isRowBeingEdited = editingCell?.rowId === row.original.id;
+              const isAnyRowBeingEdited = editingCell !== null;
 
               return (
                 <div
                   key={virtualRow.key}
-                  className={`absolute top-0 left-0 w-full hover:bg-gray-100 ${isRowBeingEdited ? "bg-gray-100" : ""}`}
+                  className="absolute top-0 left-0 w-full"
                   style={{
                     height: `${virtualRow.size}px`,
                     transform: `translateY(${virtualRow.start}px)`,
                     width: totalColumnWidth,
-                    borderBottom: "1px solid #cccccc",
+                    backgroundColor: isRowBeingEdited ? "#f3f4f6" : "white",
+                    borderBottom: "1px solid #dee1e3",
+                  }}
+                  onMouseOver={(e) => {
+                    if (!isAnyRowBeingEdited || isRowBeingEdited) {
+                      e.currentTarget.style.backgroundColor = "#f3f4f6";
+                      // Also update sticky cells
+                      const stickyRowNumber = e.currentTarget.querySelector(
+                        '[data-sticky="row-number"]',
+                      );
+                      const stickyPrimary = e.currentTarget.querySelector(
+                        '[data-sticky="primary-column"]',
+                      );
+                      if (
+                        stickyRowNumber &&
+                        stickyRowNumber instanceof HTMLElement
+                      ) {
+                        stickyRowNumber.style.backgroundColor = "#f3f4f6";
+                      }
+                      if (
+                        stickyPrimary &&
+                        stickyPrimary instanceof HTMLElement
+                      ) {
+                        stickyPrimary.style.backgroundColor = "#f3f4f6";
+                      }
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isRowBeingEdited) {
+                      e.currentTarget.style.backgroundColor = "white";
+                      // Also reset sticky cells
+                      const stickyRowNumber = e.currentTarget.querySelector(
+                        '[data-sticky="row-number"]',
+                      );
+                      const stickyPrimary = e.currentTarget.querySelector(
+                        '[data-sticky="primary-column"]',
+                      );
+                      if (
+                        stickyRowNumber &&
+                        stickyRowNumber instanceof HTMLElement
+                      ) {
+                        stickyRowNumber.style.backgroundColor = "white";
+                      }
+                      if (
+                        stickyPrimary &&
+                        stickyPrimary instanceof HTMLElement
+                      ) {
+                        stickyPrimary.style.backgroundColor = "white";
+                      }
+                    }
                   }}
                   onContextMenu={(e) => handleRowRightClick(e, row.original.id)}
                 >
@@ -503,6 +665,12 @@ export default function TableView({
                           key={cell.id}
                           className="relative flex items-center"
                           data-cell-id={`${row.original.id}-${cell.column.id}`}
+                          {...(cell.column.id === "rowNumber" && {
+                            "data-sticky": "row-number",
+                          })}
+                          {...(cell.column.getIndex() === 1 && {
+                            "data-sticky": "primary-column",
+                          })}
                           style={{
                             ...baseCellStyle,
                             ...getCellWidth(cell.column.id === "rowNumber"),
@@ -512,12 +680,12 @@ export default function TableView({
                             ),
                             borderRight: isEditing
                               ? "1px solid #186ce4"
-                              : "1px solid #cccccc",
+                              : "1px solid #dee1e3",
                             borderTop: isEditing ? "1px solid #186ce4" : "none",
                             borderBottom: isEditing
                               ? "1px solid #186ce4"
                               : isHighlighted
-                                ? "1px solid #cccccc"
+                                ? "1px solid #dee1e3"
                                 : "none",
                             borderLeft: isEditing
                               ? "1px solid #186ce4"
@@ -526,6 +694,26 @@ export default function TableView({
                             boxShadow: isEditing
                               ? "0 0 0 1px #186ce4 inset"
                               : "none",
+                            // Make row number cells sticky
+                            ...(cell.column.id === "rowNumber" && {
+                              position: "sticky",
+                              left: 0,
+                              zIndex: isEditing ? 20 : 12,
+                              backgroundColor: isRowBeingEdited
+                                ? "#f3f4f6"
+                                : "white",
+                              borderBottom: "1px solid #dee1e3",
+                            }),
+                            // Make first data column (primary) cells sticky
+                            ...(cell.column.getIndex() === 1 && {
+                              position: "sticky",
+                              left: CELL_CONFIG.rowNumberWidth,
+                              zIndex: isEditing ? 20 : 12,
+                              backgroundColor: isRowBeingEdited
+                                ? "#f3f4f6"
+                                : "white",
+                              borderBottom: "1px solid #dee1e3",
+                            }),
                           }}
                         >
                           {flexRender(
@@ -540,14 +728,128 @@ export default function TableView({
               );
             })}
 
+            {/* Add Row Button - styled like a regular table row */}
+            {shouldShowAddRowButton && (
+              <div
+                className="absolute top-0 left-0 w-full cursor-pointer"
+                style={{
+                  height: `${CELL_CONFIG.height}px`,
+                  transform: `translateY(${rowVirtualizer.getTotalSize()}px)`,
+                  width: totalColumnWidth,
+                  borderBottom: "1px solid #dee1e3",
+                  backgroundColor: "white",
+                  transition: "background-color 0.1s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = "#f3f4f6"; // gray-100
+                  // Also update sticky cells in add row
+                  const stickyRowNumber = e.currentTarget.querySelector(
+                    '[data-sticky="add-row-number"]',
+                  );
+                  const stickyPrimary = e.currentTarget.querySelector(
+                    '[data-sticky="add-primary-column"]',
+                  );
+                  if (
+                    stickyRowNumber &&
+                    stickyRowNumber instanceof HTMLElement
+                  ) {
+                    stickyRowNumber.style.backgroundColor = "#f3f4f6";
+                  }
+                  if (stickyPrimary && stickyPrimary instanceof HTMLElement) {
+                    stickyPrimary.style.backgroundColor = "#f3f4f6";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "white";
+                  // Also reset sticky cells in add row
+                  const stickyRowNumber = e.currentTarget.querySelector(
+                    '[data-sticky="add-row-number"]',
+                  );
+                  const stickyPrimary = e.currentTarget.querySelector(
+                    '[data-sticky="add-primary-column"]',
+                  );
+                  if (
+                    stickyRowNumber &&
+                    stickyRowNumber instanceof HTMLElement
+                  ) {
+                    stickyRowNumber.style.backgroundColor = "white";
+                  }
+                  if (stickyPrimary && stickyPrimary instanceof HTMLElement) {
+                    stickyPrimary.style.backgroundColor = "white";
+                  }
+                }}
+                onClick={handleAddRow}
+                title="Add row"
+              >
+                <div className="flex">
+                  {/* Row number column with Add Row icon */}
+                  <div
+                    className="justify-left relative flex items-center"
+                    data-sticky="add-row-number"
+                    style={{
+                      ...baseCellStyle,
+                      ...getCellWidth(true), // true for row number column
+                      borderRight: "1px solid #dee1e3",
+                      // Make add row button's row number cell sticky
+                      position: "sticky",
+                      left: 0,
+                      zIndex: 12,
+                      backgroundColor: "white",
+                      borderBottom: "1px solid #dee1e3",
+                    }}
+                  >
+                    <Plus className="ml-1 h-4 w-4 text-gray-400" />
+                  </div>
+
+                  {/* Border extension for row number column */}
+                  <div
+                    className="absolute"
+                    style={{
+                      left: CELL_CONFIG.rowNumberWidth - 1,
+                      top: CELL_CONFIG.height,
+                      width: "1px",
+                      height: "120px",
+                      backgroundColor: "#dee1e3",
+                    }}
+                  />
+
+                  {/* Empty cells for each visible column */}
+                  {tableData.columns
+                    .filter((column) => columnVisibility[column.id])
+                    .map((column, index) => (
+                      <div
+                        key={column.id}
+                        className="relative flex items-center"
+                        {...(index === 0 && {
+                          "data-sticky": "add-primary-column",
+                        })}
+                        style={{
+                          ...baseCellStyle,
+                          ...getCellWidth(false),
+                          borderRight: "1px solid #dee1e3",
+                          // Make first data column sticky in add row
+                          ...(index === 0 && {
+                            position: "sticky",
+                            left: CELL_CONFIG.rowNumberWidth,
+                            zIndex: 12,
+                            backgroundColor: "white",
+                            borderBottom: "1px solid #dee1e3",
+                          }),
+                        }}
+                      />
+                    ))}
+                </div>
+              </div>
+            )}
+
             {/* Loading more indicator at bottom */}
             {tableData.isFetchingNextPage && (
               <div
                 className="absolute left-0 flex w-full items-center justify-center bg-white/90 py-4"
                 style={{
-                  top: `${rowVirtualizer.getTotalSize()}px`,
+                  top: `${rowVirtualizer.getTotalSize() + (shouldShowAddRowButton ? CELL_CONFIG.height : 0)}px`,
                   width: totalColumnWidth,
-                  borderBottom: "1px solid #cccccc",
+                  borderBottom: "1px solid #dee1e3",
                 }}
               >
                 <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -557,6 +859,80 @@ export default function TableView({
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Sticky Footer Row - Record Count */}
+      <div
+        className="sticky bottom-0 z-20 overflow-clip bg-white"
+        style={{
+          borderTop: "1px solid #dee1e3",
+          borderBottom: "1px solid #dee1e3",
+        }}
+      >
+        <div className="flex">
+          {/* Record count in first cell */}
+          <div
+            className="flex cursor-default items-center justify-center text-[11px] text-gray-600"
+            style={{
+              ...baseCellStyle,
+              width: CELL_CONFIG.rowNumberWidth * 2,
+              borderRight: "1px solid #dee1e3",
+              backgroundColor: "#f8f9fa",
+              fontWeight: "500",
+              whiteSpace: "nowrap",
+              overflow: "visible", // Allow text to show fully
+              // Make footer record count sticky
+              position: "sticky",
+              left: 0,
+              zIndex: 25,
+            }}
+            title={`${tableData.totalDBRowCount.toLocaleString()} total records (${tableData.rows.length.toLocaleString()} loaded)`} // Show full count on hover
+          >
+            {tableData.totalDBRowCount.toLocaleString()} records
+          </div>
+
+          {/* Empty cells for each visible column to maintain table structure */}
+          {tableData.columns
+            .filter((column) => columnVisibility[column.id])
+            .map((column, index) => (
+              <div
+                key={`footer-${column.id}`}
+                className="flex items-center"
+                style={{
+                  ...baseCellStyle,
+                  ...getCellWidth(false),
+                  backgroundColor: "white",
+                  // Make first data column sticky in footer
+                  ...(index === 0 && {
+                    position: "sticky",
+                    left: CELL_CONFIG.rowNumberWidth,
+                    zIndex: 25,
+                    backgroundColor: "#f8f9fa",
+                  }),
+                }}
+              />
+            ))}
+
+          {/* Add column space */}
+          <div
+            className="flex items-center"
+            style={{
+              ...baseCellStyle,
+              width: CELL_CONFIG.defaultWidth / 2,
+              backgroundColor: "white",
+            }}
+          />
+
+          {/* Extension area to fill remaining space */}
+          <div
+            className="flex-1"
+            style={{
+              ...baseCellStyle,
+              borderRight: "none",
+              backgroundColor: "white",
+            }}
+          />
         </div>
       </div>
 

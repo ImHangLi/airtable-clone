@@ -261,7 +261,6 @@ export default function TableViewPage({
         tableId={tableId}
         baseId={baseId}
         currentViewId={viewId}
-        tableActions={tableActions}
         tableData={tableData ?? undefined}
         setSearchQuery={handleSearchQueryChange}
         sorting={sorting}

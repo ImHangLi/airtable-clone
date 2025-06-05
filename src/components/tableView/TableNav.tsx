@@ -31,7 +31,7 @@ export default function TableNav({ baseId, currentTableId }: TableNavProps) {
   const formRef = useRef<HTMLDivElement>(null);
 
   const baseColor = getColorFromBaseId(baseId);
-  const darkerColor = getDarkerColorFromBaseId(baseColor);
+  const darkerColor = getDarkerColorFromBaseId(baseId);
 
   // State management with persistence
   const [isAddingTable, setIsAddingTable] = useState(() => {

@@ -9,7 +9,6 @@ export const baseCellStyle = {
   height: CELL_CONFIG.height,
   lineHeight: `${CELL_CONFIG.height}px`,
   padding: `0 ${CELL_CONFIG.padding}px`,
-  boxSizing: "border-box" as const,
 };
 
 export const DROPDOWN_STYLE = {
