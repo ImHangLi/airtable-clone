@@ -27,7 +27,9 @@ import { CELL_CONFIG, baseCellStyle } from "./constants";
 import { useSearchScrolling } from "~/hooks/useSearchScrolling";
 import { DropdownMenu, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import AddColumnForm from "./AddcolumnForm";
-import { Plus } from "lucide-react";
+import { Plus, Baseline, Hash } from "lucide-react";
+import { FloatingAddRowButton } from "./FloatingAddRowButton";
+import { DraftRow } from "./DraftRow";
 
 interface TableViewProps {
   tableData: TableData;
@@ -62,6 +64,11 @@ export default function TableView({
   } | null>(null);
   const [savingStatus, setSavingStatus] = useState<string | null>(null);
   const [isAddColumnOpen, setIsAddColumnOpen] = useState(false);
+
+  // Draft row state for floating add button
+  const [isDraftRowVisible, setIsDraftRowVisible] = useState(false);
+  const [draftFocusedCell, setDraftFocusedCell] = useState<string | null>(null);
+  const [newlyAddedRowId, setNewlyAddedRowId] = useState<string | null>(null);
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -335,7 +342,7 @@ export default function TableView({
 
   // Memoized header renderer
   const createHeaderRenderer = useCallback(
-    (columnId: string, columnName: string) => {
+    (columnId: string, columnName: string, columnType: "text" | "number") => {
       const columnHeaderEditor = () => (
         <button
           className="h-full w-full bg-transparent text-left text-[13px] outline-none hover:bg-gray-50 focus:bg-gray-50"
@@ -344,7 +351,14 @@ export default function TableView({
             handleColumnHeaderRightClick(e, columnId, columnName)
           }
         >
-          {columnName}
+          <div className="flex items-center gap-1.5">
+            {columnType === "text" ? (
+              <Baseline className="h-3.5 w-3.5 text-gray-500" />
+            ) : (
+              <Hash className="h-3.5 w-3.5 text-gray-500" />
+            )}
+            <span>{columnName}</span>
+          </div>
         </button>
       );
       return columnHeaderEditor;
@@ -364,7 +378,7 @@ export default function TableView({
       ...tableData.columns.map((column: TableColumn) => ({
         id: column.id,
         accessorKey: `cells.${column.id}`,
-        header: createHeaderRenderer(column.id, column.name),
+        header: createHeaderRenderer(column.id, column.name, column.type),
         accessorFn: (row: TableRow) => row.cells[column.id],
         cell: column.type === "text" ? textCellRenderer : numberCellRenderer,
         size: CELL_CONFIG.defaultWidth,
@@ -436,16 +450,17 @@ export default function TableView({
 
   // Check if we should show the add row button - always show for easy access
   const shouldShowAddRowButton = useMemo(() => {
-    // Don't show if table is loading
-    if (tableData.isFetching || tableData.isFetchingNextPage) {
+    // Don't show if table is fetching next page (pagination loading)
+    // But keep showing during regular fetching to avoid flicker when adding rows
+    if (tableData.isFetchingNextPage) {
       return false;
     }
 
-    // Always show the add row button for better UX when not loading
+    // Always show the add row button for better UX
     return true;
-  }, [tableData.isFetching, tableData.isFetchingNextPage]);
+  }, [tableData.isFetchingNextPage]);
 
-  // Handle add row
+  // Handle add row (existing functionality)
   const handleAddRow = useCallback(async () => {
     try {
       await tableActions.addRow();
@@ -454,6 +469,75 @@ export default function TableView({
       toast.error("Failed to add row");
     }
   }, [tableActions]);
+
+  // Handle floating add row button
+  const handleFloatingAddRow = useCallback(() => {
+    setIsDraftRowVisible(true);
+  }, []);
+
+  // Handle draft row save with optimistic update and database mutation
+  const handleDraftRowSave = useCallback(
+    async (draftData: Record<string, string | number>) => {
+      setIsDraftRowVisible(false);
+      setDraftFocusedCell(null);
+      setSavingStatus("Creating row...");
+
+      try {
+        // Create the row first
+        const newRowId = await tableActions.addRow();
+
+        if (newRowId) {
+          // Update cells with the draft data
+          const updatePromises = Object.entries(draftData).map(
+            ([columnId, value]) => {
+              if (value !== "" && value !== null && value !== undefined) {
+                return tableActions.updateCell(newRowId, columnId, value);
+              }
+              return Promise.resolve(true);
+            },
+          );
+
+          await Promise.all(updatePromises);
+
+          // Set the newly added row for highlighting
+          setNewlyAddedRowId(newRowId);
+
+          // Scroll to the new row immediately after creation
+          setTimeout(() => {
+            if (parentRef.current) {
+              const rowIndex = tableData.rows.length; // New row will be at the end
+              const scrollTop = rowIndex * CELL_CONFIG.height;
+              parentRef.current.scrollTo({
+                top: scrollTop,
+                behavior: "smooth",
+              });
+            }
+          }, 100);
+
+          // Clear the highlight after 1 second from when the scroll happens
+          setTimeout(() => {
+            setNewlyAddedRowId(null);
+          }, 2000);
+
+          toast.success("Row created successfully");
+        } else {
+          toast.error("Failed to create row");
+        }
+      } catch (error) {
+        console.error("Failed to create row with data:", error);
+        toast.error("Failed to create row");
+      } finally {
+        setSavingStatus(null);
+      }
+    },
+    [tableActions, tableData.rows.length],
+  );
+
+  // Handle draft row cancel
+  const handleDraftRowCancel = useCallback(() => {
+    setIsDraftRowVisible(false);
+    setDraftFocusedCell(null);
+  }, []);
 
   // Table View
   return (
@@ -588,6 +672,7 @@ export default function TableView({
 
               const isRowBeingEdited = editingCell?.rowId === row.original.id;
               const isAnyRowBeingEdited = editingCell !== null;
+              const isNewlyAdded = newlyAddedRowId === row.original.id;
 
               return (
                 <div
@@ -597,12 +682,32 @@ export default function TableView({
                     height: `${virtualRow.size}px`,
                     transform: `translateY(${virtualRow.start}px)`,
                     width: totalColumnWidth,
-                    backgroundColor: isRowBeingEdited ? "#f3f4f6" : "white",
+                    backgroundColor: isNewlyAdded
+                      ? "#dbeafe" // blue-100 for newly added rows
+                      : isRowBeingEdited
+                        ? "#f3f4f6"
+                        : "white",
                     borderBottom: "1px solid #dee1e3",
+                    transition: isNewlyAdded
+                      ? "background-color 1s ease-out"
+                      : "none",
                   }}
                   onMouseOver={(e) => {
-                    if (!isAnyRowBeingEdited || isRowBeingEdited) {
+                    if (
+                      !isNewlyAdded &&
+                      (!isAnyRowBeingEdited || isRowBeingEdited)
+                    ) {
                       e.currentTarget.style.backgroundColor = "#f3f4f6";
+
+                      // Update all cells in the row
+                      const allCells =
+                        e.currentTarget.querySelectorAll("[data-cell-id]");
+                      allCells.forEach((cell) => {
+                        if (cell instanceof HTMLElement) {
+                          cell.style.backgroundColor = "#f3f4f6";
+                        }
+                      });
+
                       // Also update sticky cells
                       const stickyRowNumber = e.currentTarget.querySelector(
                         '[data-sticky="row-number"]',
@@ -625,8 +730,18 @@ export default function TableView({
                     }
                   }}
                   onMouseLeave={(e) => {
-                    if (!isRowBeingEdited) {
+                    if (!isRowBeingEdited && !isNewlyAdded) {
                       e.currentTarget.style.backgroundColor = "white";
+
+                      // Reset all cells in the row
+                      const allCells =
+                        e.currentTarget.querySelectorAll("[data-cell-id]");
+                      allCells.forEach((cell) => {
+                        if (cell instanceof HTMLElement) {
+                          cell.style.backgroundColor = "white";
+                        }
+                      });
+
                       // Also reset sticky cells
                       const stickyRowNumber = e.currentTarget.querySelector(
                         '[data-sticky="row-number"]',
@@ -656,9 +771,13 @@ export default function TableView({
                         editingCell?.rowId === row.original.id &&
                         editingCell?.columnId === cell.column.id;
 
-                      const isHighlighted = highlights?.some(
-                        (h) => h.columnId === cell.column.id,
+                      // Get combined highlight style for this cell
+                      const combinedHighlightStyle = getCombinedHighlightStyle(
+                        row.original.id,
+                        cell.column.id,
                       );
+                      const hasSearchHighlight =
+                        !!combinedHighlightStyle.backgroundColor;
 
                       return (
                         <div
@@ -674,19 +793,14 @@ export default function TableView({
                           style={{
                             ...baseCellStyle,
                             ...getCellWidth(cell.column.id === "rowNumber"),
-                            ...getCombinedHighlightStyle(
-                              row.original.id,
-                              cell.column.id,
-                            ),
+                            ...combinedHighlightStyle,
                             borderRight: isEditing
                               ? "1px solid #186ce4"
                               : "1px solid #dee1e3",
                             borderTop: isEditing ? "1px solid #186ce4" : "none",
                             borderBottom: isEditing
                               ? "1px solid #186ce4"
-                              : isHighlighted
-                                ? "1px solid #dee1e3"
-                                : "none",
+                              : "1px solid #dee1e3",
                             borderLeft: isEditing
                               ? "1px solid #186ce4"
                               : "none",
@@ -694,25 +808,47 @@ export default function TableView({
                             boxShadow: isEditing
                               ? "0 0 0 1px #186ce4 inset"
                               : "none",
+                            backgroundColor: isNewlyAdded
+                              ? "#dbeafe"
+                              : isRowBeingEdited
+                                ? "#f3f4f6"
+                                : "white",
+                            transition: isNewlyAdded
+                              ? "background-color 0.5s ease-out"
+                              : "none",
                             // Make row number cells sticky
                             ...(cell.column.id === "rowNumber" && {
                               position: "sticky",
                               left: 0,
                               zIndex: isEditing ? 20 : 12,
-                              backgroundColor: isRowBeingEdited
-                                ? "#f3f4f6"
-                                : "white",
+                              backgroundColor: hasSearchHighlight
+                                ? combinedHighlightStyle.backgroundColor
+                                : isNewlyAdded
+                                  ? "#dbeafe"
+                                  : isRowBeingEdited
+                                    ? "#f3f4f6"
+                                    : "white",
                               borderBottom: "1px solid #dee1e3",
+                              transition: isNewlyAdded
+                                ? "background-color 0.5s ease-out"
+                                : "none",
                             }),
                             // Make first data column (primary) cells sticky
                             ...(cell.column.getIndex() === 1 && {
                               position: "sticky",
                               left: CELL_CONFIG.rowNumberWidth,
                               zIndex: isEditing ? 20 : 12,
-                              backgroundColor: isRowBeingEdited
-                                ? "#f3f4f6"
-                                : "white",
+                              backgroundColor: hasSearchHighlight
+                                ? combinedHighlightStyle.backgroundColor
+                                : isNewlyAdded
+                                  ? "#dbeafe"
+                                  : isRowBeingEdited
+                                    ? "#f3f4f6"
+                                    : "white",
                               borderBottom: "1px solid #dee1e3",
+                              transition: isNewlyAdded
+                                ? "background-color 0.5s ease-out"
+                                : "none",
                             }),
                           }}
                         >
@@ -847,7 +983,7 @@ export default function TableView({
               <div
                 className="absolute left-0 flex w-full items-center justify-center bg-white/90 py-4"
                 style={{
-                  top: `${rowVirtualizer.getTotalSize() + (shouldShowAddRowButton ? CELL_CONFIG.height : 0)}px`,
+                  top: `${rowVirtualizer.getTotalSize() + (shouldShowAddRowButton ? CELL_CONFIG.height : 0) + (isDraftRowVisible ? CELL_CONFIG.height : 0)}px`,
                   width: totalColumnWidth,
                   borderBottom: "1px solid #dee1e3",
                 }}
@@ -861,6 +997,28 @@ export default function TableView({
           </div>
         </div>
       </div>
+
+      {/* Draft Row - positioned above the sticky footer */}
+      {isDraftRowVisible && (
+        <div
+          className="sticky z-30 bg-white"
+          style={{
+            bottom: `${CELL_CONFIG.height}px`, // Position above the footer
+            borderTop: "1px solid #dee1e3",
+          }}
+        >
+          <DraftRow
+            columns={tableData.columns}
+            columnVisibility={columnVisibility}
+            totalColumnWidth={totalColumnWidth}
+            onSave={handleDraftRowSave}
+            onCancel={handleDraftRowCancel}
+            getCellWidth={getCellWidth}
+            focusedCell={draftFocusedCell}
+            setFocusedCell={setDraftFocusedCell}
+          />
+        </div>
+      )}
 
       {/* Sticky Footer Row - Record Count */}
       <div
@@ -964,6 +1122,16 @@ export default function TableView({
             }
           />
         )}
+
+      {/* Floating Add Row Button */}
+      <FloatingAddRowButton
+        onClick={handleFloatingAddRow}
+        isVisible={
+          !isDraftRowVisible &&
+          !tableData.isFetching &&
+          !tableData.isFetchingNextPage
+        }
+      />
     </div>
   );
 }
