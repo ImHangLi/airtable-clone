@@ -40,52 +40,86 @@ export const users = createTable("users", {
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const bases = createTable("bases", {
-  id: uuid("id").primaryKey().defaultRandom().unique().notNull(),
-  user_id: text("user_id")
-    .references(() => users.id, { onDelete: "cascade" })
-    .notNull(),
-  name: text("name").notNull(),
-  color: text("color").notNull(),
-  ...timeStamps,
-});
+export const bases = createTable(
+  "bases",
+  {
+    id: uuid("id").primaryKey().defaultRandom().unique().notNull(),
+    user_id: text("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    name: text("name").notNull(),
+    color: text("color").notNull(),
+    ...timeStamps,
+  },
+  (t) => [
+    // CRITICAL: For user-base relationship and ordering
+    index("idx_bases_user_updated").on(t.user_id, t.updated_at),
+  ],
+);
 
-export const tables = createTable("tables", {
-  id: uuid("id").primaryKey().defaultRandom().unique().notNull(),
-  base_id: uuid("base_id")
-    .references(() => bases.id, { onDelete: "cascade" })
-    .notNull(),
-  name: text("name").notNull(),
-  ...timeStamps,
-});
+export const tables = createTable(
+  "tables",
+  {
+    id: uuid("id").primaryKey().defaultRandom().unique().notNull(),
+    base_id: uuid("base_id")
+      .references(() => bases.id, { onDelete: "cascade" })
+      .notNull(),
+    name: text("name").notNull(),
+    ...timeStamps,
+  },
+  (t) => [
+    // CRITICAL: For base-table relationship queries
+    index("idx_tables_base_id").on(t.base_id),
+    // PERFORMANCE: For ordering by creation date
+    index("idx_tables_created_at").on(t.created_at),
+  ],
+);
 
-export const columns = createTable("columns", {
-  id: uuid("id").primaryKey().defaultRandom().unique().notNull(),
-  base_id: uuid("base_id")
-    .references(() => bases.id, { onDelete: "cascade" })
-    .notNull(),
-  table_id: uuid("table_id")
-    .references(() => tables.id, { onDelete: "cascade" })
-    .notNull(),
-  name: text("name").notNull(),
-  type: columnTypeEnum("type").notNull(),
-  position: doublePrecision("position").notNull().default(0),
-  is_visible: boolean("is_visible").notNull().default(true),
-  is_primary: boolean("is_primary").notNull().default(false),
-  sort: columnSortEnum("sort").notNull().default("asc"),
-  ...timeStamps,
-});
+export const columns = createTable(
+  "columns",
+  {
+    id: uuid("id").primaryKey().defaultRandom().unique().notNull(),
+    base_id: uuid("base_id")
+      .references(() => bases.id, { onDelete: "cascade" })
+      .notNull(),
+    table_id: uuid("table_id")
+      .references(() => tables.id, { onDelete: "cascade" })
+      .notNull(),
+    name: text("name").notNull(),
+    type: columnTypeEnum("type").notNull(),
+    position: doublePrecision("position").notNull().default(0),
+    is_visible: boolean("is_visible").notNull().default(true),
+    is_primary: boolean("is_primary").notNull().default(false),
+    sort: columnSortEnum("sort").notNull().default("asc"),
+    ...timeStamps,
+  },
+  (t) => [
+    // CRITICAL: For table-column relationship queries and ordering
+    index("idx_columns_table_position").on(t.table_id, t.position),
+    // PERFORMANCE: For base-wide column operations
+    index("idx_columns_base_id").on(t.base_id),
+  ],
+);
 
-export const rows = createTable("rows", {
-  id: uuid("id").primaryKey().defaultRandom().unique().notNull(),
-  base_id: uuid("base_id")
-    .references(() => bases.id, { onDelete: "cascade" })
-    .notNull(),
-  table_id: uuid("table_id")
-    .references(() => tables.id, { onDelete: "cascade" })
-    .notNull(),
-  ...timeStamps,
-});
+export const rows = createTable(
+  "rows",
+  {
+    id: uuid("id").primaryKey().defaultRandom().unique().notNull(),
+    base_id: uuid("base_id")
+      .references(() => bases.id, { onDelete: "cascade" })
+      .notNull(),
+    table_id: uuid("table_id")
+      .references(() => tables.id, { onDelete: "cascade" })
+      .notNull(),
+    ...timeStamps,
+  },
+  (t) => [
+    // CRITICAL: For table row queries and pagination
+    index("idx_rows_table_created").on(t.table_id, t.created_at, t.id),
+    // PERFORMANCE: For base-wide operations
+    index("idx_rows_base_id").on(t.base_id),
+  ],
+);
 
 export const cells = createTable(
   "cells",
@@ -104,36 +138,55 @@ export const cells = createTable(
   },
   (t) => [
     primaryKey({ columns: [t.row_id, t.column_id] }),
-    // Performance indexes for filtering and searching
-    index("idx_cells_text_value").on(t.column_id, t.value_text),
-    index("idx_cells_number_value").on(t.column_id, t.value_number),
+
+    // CRITICAL: Main data retrieval index - most important for performance
+    index("idx_cells_row_batch").on(t.row_id),
+
+    // CRITICAL: Filtering and searching indices
+    index("idx_cells_column_text").on(t.column_id, t.value_text),
+    index("idx_cells_column_number").on(t.column_id, t.value_number),
+
+    // CRITICAL: Base-wide operations (bulk deletes, base queries)
     index("idx_cells_base_id").on(t.base_id),
-    // B-tree indexes for case-insensitive pattern matching (ILIKE)
-    index("idx_cells_text_lower").using(
+
+    // CRITICAL: Search functionality with case-insensitive pattern matching (ILIKE)
+    index("idx_cells_text_ilike").using(
       "btree",
       sql`lower(${t.value_text}) text_pattern_ops`,
     ),
-    index("idx_cells_number_text_lower").using(
+    index("idx_cells_number_search").using(
       "btree",
       sql`lower(CAST(${t.value_number} AS TEXT)) text_pattern_ops`,
     ),
+
+    // PERFORMANCE: Composite index for complex filtering
+    index("idx_cells_base_column").on(t.base_id, t.column_id),
   ],
 );
 
-export const views = createTable("views", {
-  id: uuid("id").primaryKey().defaultRandom().unique().notNull(),
-  table_id: uuid("table_id")
-    .references(() => tables.id, { onDelete: "cascade" })
-    .notNull(),
-  base_id: uuid("base_id")
-    .references(() => bases.id, { onDelete: "cascade" })
-    .notNull(),
-  name: text("name").notNull(),
-  filters: jsonb("filters").notNull().$type<FilterConfig[]>(),
-  sorts: jsonb("sorts").notNull().$type<SortConfig[]>(),
-  hiddenColumns: jsonb("hiddenColumns").notNull().$type<string[]>(),
-  ...timeStamps,
-});
+export const views = createTable(
+  "views",
+  {
+    id: uuid("id").primaryKey().defaultRandom().unique().notNull(),
+    table_id: uuid("table_id")
+      .references(() => tables.id, { onDelete: "cascade" })
+      .notNull(),
+    base_id: uuid("base_id")
+      .references(() => bases.id, { onDelete: "cascade" })
+      .notNull(),
+    name: text("name").notNull(),
+    filters: jsonb("filters").notNull().$type<FilterConfig[]>(),
+    sorts: jsonb("sorts").notNull().$type<SortConfig[]>(),
+    hiddenColumns: jsonb("hiddenColumns").notNull().$type<string[]>(),
+    ...timeStamps,
+  },
+  (t) => [
+    // CRITICAL: For table-view relationship queries
+    index("idx_views_table_id").on(t.table_id),
+    // PERFORMANCE: For base-wide view operations
+    index("idx_views_base_id").on(t.base_id),
+  ],
+);
 
 // Relations for better query performance and type safety
 export const userRelations = relations(users, ({ many }) => ({
