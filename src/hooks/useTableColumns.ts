@@ -138,14 +138,15 @@ export function useTableColumns({
   });
 
   const addColumnMutation = api.column.addColumn.useMutation({
-    onMutate: async ({ name, type }) => {
+    onMutate: async ({ name, type, columnId }) => {
       await utils.data.getInfiniteTableData.cancel(queryParams);
 
       const previousData =
         utils.data.getInfiniteTableData.getInfiniteData(queryParams);
 
       if (previousData && tableInfo) {
-        const tempColumnId = crypto.randomUUID();
+        // Use the columnId passed from the client (already generated)
+        const tempColumnId = columnId ?? crypto.randomUUID(); // Fallback if not provided
         const now = new Date();
 
         // 🎯 Create a temporary column for optimistic update
@@ -239,11 +240,15 @@ export function useTableColumns({
         type: "text" | "number",
       ): Promise<string | null> => {
         try {
-          // 🎯 Optimistic update + server reliability via exponential backoff
+          // Generate ID on client for immediate use
+          const tempColumnId = crypto.randomUUID();
+
+          // 🎯 Pass client-generated ID to server for consistency
           const result = await addColumnMutation.mutateAsync({
             tableId,
             name,
             type,
+            columnId: tempColumnId, // Use the same ID client-side and server-side
           });
           return result.id;
         } catch (error) {

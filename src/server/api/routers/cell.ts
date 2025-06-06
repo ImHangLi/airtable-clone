@@ -12,50 +12,54 @@ export const cellValueSchema = z.object({
   baseId: z.string().uuid("Invalid base ID"),
 });
 
-// Exponential backoff configuration
+// Simplified retry configuration for database operations
 const RETRY_CONFIG = {
-  maxAttempts: 5, // Maximum number of retry attempts
-  initialDelay: 1000, // Initial delay in milliseconds (1 second)
-  maxDelay: 10000, // Maximum delay between retries (10 seconds)
-  backoffMultiplier: 2, // Multiply delay by this factor each retry
+  maxAttempts: 20,
+  delay: 1000,
+  maxDelay: 10000, // Cap at 10 seconds
+  backoffMultiplier: 2, // Double the delay each retry
 };
 
+// Proper exponential backoff with jitter
 async function exponentialBackoff(attempt: number): Promise<void> {
-  const delay = Math.min(
-    RETRY_CONFIG.initialDelay *
-      Math.pow(RETRY_CONFIG.backoffMultiplier, attempt),
-    RETRY_CONFIG.maxDelay,
-  );
+  const baseDelay =
+    RETRY_CONFIG.delay * Math.pow(RETRY_CONFIG.backoffMultiplier, attempt);
+  const cappedDelay = Math.min(baseDelay, RETRY_CONFIG.maxDelay);
 
-  // Add some jitter (randomness) to prevent thundering herd problem
-  const jitter = Math.random() * 0.1 * delay; // Up to 10% jitter
-  const finalDelay = delay + jitter;
+  // Add jitter (up to 20% randomness) to prevent thundering herd
+  const jitter = Math.random() * 0.2 * cappedDelay;
+  const finalDelay = cappedDelay + jitter;
 
   console.log(
-    `Retrying in ${Math.round(finalDelay)}ms (attempt ${attempt + 1})`,
+    `Retrying in ${Math.round(finalDelay)}ms (attempt ${attempt + 1}/${RETRY_CONFIG.maxAttempts})`,
   );
 
   return new Promise((resolve) => setTimeout(resolve, finalDelay));
 }
 
+// Treat all errors as retryable for maximum resilience
 function isRetryableError(error: unknown): boolean {
+  // Only skip retries for explicit client errors that won't change
   if (error instanceof TRPCError) {
-    // Only retry on server errors or timeouts, not client errors
-    return error.code === "INTERNAL_SERVER_ERROR" || error.code === "TIMEOUT";
+    // Don't retry on authentication/authorization errors
+    if (error.code === "UNAUTHORIZED" || error.code === "FORBIDDEN") {
+      console.log("Authentication/authorization error - not retrying");
+      return false;
+    }
+
+    // Don't retry on bad input validation errors
+    if (error.code === "BAD_REQUEST" && error.message.includes("Invalid")) {
+      console.log("Input validation error - not retrying");
+      return false;
+    }
   }
 
-  // For database errors or network issues, we should retry
-  if (error instanceof Error) {
-    const message = error.message.toLowerCase();
-    return (
-      message.includes("timeout") ||
-      message.includes("connection") ||
-      message.includes("network") ||
-      message.includes("temporary")
-    );
-  }
-
-  return false;
+  // For all other errors (database, network, timing issues), retry
+  console.log(
+    "Error detected - will retry:",
+    error instanceof Error ? error.message : "Unknown error",
+  );
+  return true;
 }
 
 export async function getCellValue(
@@ -84,7 +88,7 @@ export async function getCellValue(
 }
 
 export const cellRouter = createTRPCRouter({
-  // Update a cell value with exponential backoff retry logic
+  // Update a cell value with simplified retry logic
   updateCell: protectedProcedure
     .input(cellValueSchema)
     .mutation(
@@ -95,7 +99,7 @@ export const cellRouter = createTRPCRouter({
         const { rowId, columnId, value, baseId } = input;
         let lastError: unknown;
 
-        // Retry loop with exponential backoff
+        // Simple retry loop for database race conditions
         for (let attempt = 0; attempt < RETRY_CONFIG.maxAttempts; attempt++) {
           try {
             console.log(
@@ -110,10 +114,14 @@ export const cellRouter = createTRPCRouter({
               .limit(1);
 
             if (!columnInfo) {
-              // Column not found is not retryable - it's a permanent error
+              // For newly created columns, this might be a race condition
+              // So we make it retryable
+              console.log(
+                `Column ${columnId} not found on attempt ${attempt + 1}`,
+              );
               throw new TRPCError({
                 code: "NOT_FOUND",
-                message: "Column not found",
+                message: `Column ${columnId} not found`,
               });
             }
 
@@ -159,20 +167,28 @@ export const cellRouter = createTRPCRouter({
               break;
             }
 
-            // Wait before retrying with exponential backoff
+            // Simple delay before retrying
+            console.log(`Waiting ${RETRY_CONFIG.delay}ms before retry...`);
             await exponentialBackoff(attempt);
           }
         }
 
-        // All retries failed, throw the last error
-        console.error("All retry attempts failed for cell update");
+        // All retries failed, throw the last error with more context
+        console.error("All retry attempts failed for cell update", {
+          rowId,
+          columnId,
+          value,
+          baseId,
+          lastError,
+        });
+
         if (lastError instanceof TRPCError) {
           throw lastError;
         }
 
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to update cell after multiple attempts",
+          message: `Failed to update cell after ${RETRY_CONFIG.maxAttempts} attempts. Last error: ${lastError instanceof Error ? lastError.message : "Unknown error"}`,
         });
       },
     ),

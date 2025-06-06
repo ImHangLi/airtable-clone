@@ -44,14 +44,15 @@ export function useTableRows({
 
   // Row mutations
   const createRowMutation = api.row.createRow.useMutation({
-    onMutate: async () => {
+    onMutate: async ({ rowId }) => {
       await utils.data.getInfiniteTableData.cancel(queryParams);
 
       const previousData =
         utils.data.getInfiniteTableData.getInfiniteData(queryParams);
 
       if (previousData && tableInfo) {
-        const tempRowId = crypto.randomUUID();
+        // Use the rowId passed from the client (already generated)
+        const tempRowId = rowId ?? crypto.randomUUID(); // Fallback if not provided
         const emptyCells: Record<string, string | number> = {};
 
         tableInfo.columns.forEach((column: Column) => {
@@ -248,9 +249,13 @@ export function useTableRows({
     (): RowActions => ({
       addRow: async (): Promise<string | null> => {
         try {
+          // Generate ID on client for immediate use
+          const tempRowId = crypto.randomUUID();
+
           const result = await createRowMutation.mutateAsync({
             tableId,
             baseId,
+            rowId: tempRowId, // 🎯 Pass the client-generated ID to server
           });
           return result.id;
         } catch (error) {

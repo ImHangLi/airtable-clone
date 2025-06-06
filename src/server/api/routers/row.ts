@@ -10,6 +10,7 @@ import { getCellValue } from "./cell";
 export const createRowSchema = z.object({
   tableId: z.string().uuid("Invalid table ID"),
   baseId: z.string().uuid("Invalid base ID"),
+  rowId: z.string().uuid("Invalid row ID").optional(),
 });
 
 export const createRowWithCellValuesSchema = z.object({
@@ -34,7 +35,8 @@ export const rowRouter = createTRPCRouter({
     .input(createRowSchema)
     .mutation(async ({ ctx, input }): Promise<{ id: string }> => {
       try {
-        const newRowId = crypto.randomUUID();
+        // Use client-provided ID if available, otherwise generate one
+        const newRowId = input.rowId ?? crypto.randomUUID();
 
         await ctx.db.insert(rows).values({
           id: newRowId,

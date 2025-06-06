@@ -24,10 +24,8 @@ export const addColumnSchema = z.object({
   tableId: z.string().uuid("Invalid table ID"),
   name: z.string().min(1, "Column name is required"),
   type: z.enum(["text", "number"]),
+  columnId: z.string().uuid("Invalid column ID").optional(),
 });
-
-// Global map to track background processes for cancellation
-const backgroundProcesses = new Map<string, { cancelled: boolean }>();
 
 export const columnRouter = createTRPCRouter({
   // Update column name
@@ -76,20 +74,11 @@ export const columnRouter = createTRPCRouter({
           });
         }
 
-        // Cancel any background processing for this column
-        const processControl = backgroundProcesses.get(input.columnId);
-        if (processControl) {
-          processControl.cancelled = true;
-        }
-
         // Delete all cells for this column first
         await ctx.db.delete(cells).where(eq(cells.column_id, input.columnId));
 
         // Then delete the column
         await ctx.db.delete(columns).where(eq(columns.id, input.columnId));
-
-        // Clean up the process control
-        backgroundProcesses.delete(input.columnId);
 
         return { success: true };
       } catch (error) {
@@ -109,7 +98,7 @@ export const columnRouter = createTRPCRouter({
     .input(addColumnSchema)
     .mutation(async ({ ctx, input }): Promise<{ id: string }> => {
       try {
-        const { tableId, name, type } = input;
+        const { tableId, name, type, columnId } = input;
 
         // Get the table to find base_id
         const [table] = await ctx.db
@@ -134,8 +123,8 @@ export const columnRouter = createTRPCRouter({
 
         const nextPosition = (maxPositionResult[0]?.maxPosition ?? -1) + 1;
 
-        // Create the new column
-        const newColumnId = crypto.randomUUID();
+        // Use client-provided ID if available, otherwise generate one
+        const newColumnId = columnId ?? crypto.randomUUID();
         await ctx.db.insert(columns).values({
           id: newColumnId,
           base_id: table.base_id,
@@ -152,17 +141,21 @@ export const columnRouter = createTRPCRouter({
           .from(rows)
           .where(eq(rows.table_id, tableId));
 
-        // Create empty cells for all existing rows in the new column with batching
+        // Create empty cells for all existing rows in the new column - ALL SYNCHRONOUSLY
         if (existingRows.length > 0) {
-          const BATCH_SIZE = 1000; // Process rows in batches
+          const BATCH_SIZE = 1000; // Process in smaller batches for memory efficiency
           const totalRows = existingRows.length;
 
-          // Process first batch synchronously for immediate response
-          const firstBatchSize = Math.min(BATCH_SIZE, totalRows);
-          const firstBatch = existingRows.slice(0, firstBatchSize);
+          // Process ALL rows synchronously to prevent race conditions
+          console.log(
+            `Creating cells for ${totalRows} existing rows in new column ${newColumnId}`,
+          );
 
-          if (firstBatch.length > 0) {
-            const firstBatchCells = firstBatch.map((row) => ({
+          for (let i = 0; i < totalRows; i += BATCH_SIZE) {
+            const batchEnd = Math.min(i + BATCH_SIZE, totalRows);
+            const batch = existingRows.slice(i, batchEnd);
+
+            const cellsToInsert = batch.map((row) => ({
               row_id: row.id,
               column_id: newColumnId,
               base_id: table.base_id,
@@ -170,82 +163,14 @@ export const columnRouter = createTRPCRouter({
               value_number: null,
             }));
 
-            await ctx.db.insert(cells).values(firstBatchCells);
+            await ctx.db.insert(cells).values(cellsToInsert);
+
+            console.log(
+              `Processed batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(totalRows / BATCH_SIZE)} for column ${newColumnId}`,
+            );
           }
 
-          // Process remaining rows in background if there are more
-          if (totalRows > BATCH_SIZE) {
-            // Register this process for potential cancellation
-            backgroundProcesses.set(newColumnId, { cancelled: false });
-
-            const backgroundProcessing = async () => {
-              const remainingRows = existingRows.slice(BATCH_SIZE);
-              const numBatches = Math.ceil(remainingRows.length / BATCH_SIZE);
-
-              for (let i = 0; i < numBatches; i++) {
-                try {
-                  // Check if process was cancelled
-                  const processControl = backgroundProcesses.get(newColumnId);
-                  if (processControl?.cancelled) {
-                    break;
-                  }
-
-                  // Check if column still exists before processing batch
-                  const columnExists = await ctx.db
-                    .select({ id: columns.id })
-                    .from(columns)
-                    .where(eq(columns.id, newColumnId))
-                    .limit(1);
-
-                  if (columnExists.length === 0) {
-                    break; // Exit the loop if column was deleted
-                  }
-
-                  const batchStart = i * BATCH_SIZE;
-                  const batchEnd = Math.min(
-                    batchStart + BATCH_SIZE,
-                    remainingRows.length,
-                  );
-                  const batch = remainingRows.slice(batchStart, batchEnd);
-
-                  const cellsToInsert = batch.map((row) => ({
-                    row_id: row.id,
-                    column_id: newColumnId,
-                    base_id: table.base_id,
-                    value_text: null,
-                    value_number: null,
-                  }));
-
-                  await ctx.db.insert(cells).values(cellsToInsert);
-
-                  // Small delay to prevent overwhelming the database
-                  if (i < numBatches - 1) {
-                    await new Promise((resolve) => setTimeout(resolve, 50));
-                  }
-                } catch (batchError) {
-                  console.error(
-                    `Error in batch ${i + 1} for column ${newColumnId}:`,
-                    batchError,
-                  );
-                  // Continue with next batch instead of failing completely
-                }
-              }
-
-              // Clean up process control when done
-              backgroundProcesses.delete(newColumnId);
-            };
-
-            // Start background processing without awaiting
-            backgroundProcessing().catch((error) => {
-              console.error(
-                "Background cell creation failed for column:",
-                newColumnId,
-                error,
-              );
-              // Clean up on error
-              backgroundProcesses.delete(newColumnId);
-            });
-          }
+          console.log(`Completed creating all cells for column ${newColumnId}`);
         }
 
         return { id: newColumnId };
