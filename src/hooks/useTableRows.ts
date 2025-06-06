@@ -83,9 +83,8 @@ export function useTableRows({
 
       return { previousData };
     },
-    onSuccess: (result) => {
-      // 🎯 Optimistic update succeeded! Trust exponential backoff - no invalidation needed
-      console.log(`Row created successfully: ${result.id}`);
+    onSuccess: () => {
+      void utils.data.getInfiniteTableData.invalidate(queryParams);
     },
     onError: (error, _, context) => {
       // 🎯 Only revert optimistic update on error, trust retries will handle transient issues
@@ -135,9 +134,8 @@ export function useTableRows({
 
         return { previousData };
       },
-      onSuccess: (result) => {
-        // 🎯 Optimistic update succeeded! Trust exponential backoff - no invalidation needed
-        console.log(`Row with cell values created successfully: ${result.id}`);
+      onSuccess: () => {
+        void utils.data.getInfiniteTableData.invalidate(queryParams);
       },
       onError: (error, _, context) => {
         // 🎯 Only revert optimistic update on error

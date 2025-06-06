@@ -15,6 +15,7 @@ interface SearchInputProps {
   disabled?: boolean;
   backendSearchMatches?: BackendSearchMatch[];
   onSearchMatches?: (navigationState: SearchNavigationState) => void;
+  onInvalidateTableData?: () => void;
 }
 
 export function SearchInput({
@@ -22,6 +23,7 @@ export function SearchInput({
   disabled = false,
   backendSearchMatches = [],
   onSearchMatches,
+  onInvalidateTableData,
 }: SearchInputProps) {
   // State to track if the search dropdown is open
   const [isOpen, setIsOpen] = useState(false);
@@ -45,6 +47,7 @@ export function SearchInput({
     onSearch: onChange,
     onSearchMatches,
     backendSearchMatches,
+    onInvalidateTableData,
   });
 
   // Focus management - maintain focus during search operations

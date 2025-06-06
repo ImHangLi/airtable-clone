@@ -22,6 +22,7 @@ interface SortMenuProps {
   sorting: SortConfig[];
   onSortingChange: (sorting: SortConfig[]) => void;
   onHighlightChange?: (highlights: ColumnHighlight[]) => void;
+  onInvalidateTableData?: () => void;
 }
 
 export default function SortMenu({
@@ -29,6 +30,7 @@ export default function SortMenu({
   sorting,
   onSortingChange,
   onHighlightChange,
+  onInvalidateTableData,
 }: SortMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [addSortOpen, setAddSortOpen] = useState(false);
@@ -67,7 +69,10 @@ export default function SortMenu({
 
   const handleClearAll = useCallback(() => {
     onSortingChange([]);
-  }, [onSortingChange]);
+    if (onInvalidateTableData) {
+      onInvalidateTableData();
+    }
+  }, [onSortingChange, onInvalidateTableData]);
 
   const handleChangeSort = useCallback(
     (oldColumnId: string, newColumnId: string) => {

@@ -22,6 +22,7 @@ interface UseTableSearchOptions {
   onSearch?: (value: string) => void;
   onSearchMatches?: (navigationState: SearchNavigationState) => void;
   backendSearchMatches?: BackendSearchMatch[];
+  onInvalidateTableData?: () => void;
 }
 
 interface UseTableSearchReturn {
@@ -41,6 +42,7 @@ export function useTableSearch({
   onSearch,
   onSearchMatches,
   backendSearchMatches = [],
+  onInvalidateTableData,
 }: UseTableSearchOptions = {}): UseTableSearchReturn {
   const [searchValue, setSearchValue] = useState("");
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
@@ -142,7 +144,10 @@ export function useTableSearch({
   const clearSearch = useCallback(() => {
     setSearchValue("");
     setCurrentMatchIndex(0);
-  }, []);
+    if (onInvalidateTableData) {
+      onInvalidateTableData();
+    }
+  }, [onInvalidateTableData]);
 
   // Handle input changes with validation
   const handleInputChange = useCallback(

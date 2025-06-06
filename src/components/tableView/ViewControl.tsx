@@ -45,6 +45,7 @@ interface ViewControlProps {
   isViewSideOpen: boolean;
   onToggleViewSide: () => void;
   onSearchMatches?: (navigationState: SearchNavigationState) => void;
+  onInvalidateTableData?: () => void;
 }
 
 export default memo(function ViewControl({
@@ -67,6 +68,7 @@ export default memo(function ViewControl({
   isViewSideOpen,
   onToggleViewSide,
   onSearchMatches,
+  onInvalidateTableData,
 }: ViewControlProps) {
   const [isAddingManyRows, setIsAddingManyRows] = useState(false);
   const utils = api.useUtils();
@@ -165,6 +167,7 @@ export default memo(function ViewControl({
             filtering={filtering}
             onFilteringChange={onFilteringChange}
             onHighlightChange={onFilterHighlightChange}
+            onInvalidateTableData={onInvalidateTableData}
           />
 
           <Button
@@ -181,6 +184,7 @@ export default memo(function ViewControl({
             sorting={sorting}
             onSortingChange={onSortingChange}
             onHighlightChange={onSortHighlightChange}
+            onInvalidateTableData={onInvalidateTableData}
           />
 
           <Button
@@ -283,6 +287,7 @@ export default memo(function ViewControl({
           disabled={!!loadingStatus}
           backendSearchMatches={tableData?.searchMatches ?? []}
           onSearchMatches={onSearchMatches}
+          onInvalidateTableData={onInvalidateTableData}
         />
       </div>
 

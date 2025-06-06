@@ -182,6 +182,11 @@ export default function TableViewPage({
     [],
   );
 
+  // Table data invalidation callback
+  const handleInvalidateTableData = useCallback(() => {
+    void utils.data.getInfiniteTableData.invalidate();
+  }, [utils]);
+
   // Get base information using tRPC
   const { data: baseNameAndColor, error: baseError } =
     api.base.getNameAndColorById.useQuery({
@@ -282,6 +287,7 @@ export default function TableViewPage({
         isViewSideOpen={isViewSideOpen}
         onToggleViewSide={handleToggleViewSide}
         onSearchMatches={handleSearchMatches}
+        onInvalidateTableData={handleInvalidateTableData}
       />
 
       {/* Main Content Area */}

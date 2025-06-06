@@ -25,6 +25,7 @@ interface FilterMenuProps {
   filtering?: FilterConfig[];
   onFilteringChange: (filtering: FilterConfig[]) => void;
   onHighlightChange?: (highlights: ColumnHighlight[]) => void;
+  onInvalidateTableData?: () => void;
 }
 
 export default function FilterMenu({
@@ -32,6 +33,7 @@ export default function FilterMenu({
   filtering = [],
   onFilteringChange,
   onHighlightChange,
+  onInvalidateTableData,
 }: FilterMenuProps) {
   const [filterOpen, setFilterOpen] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
@@ -440,6 +442,9 @@ export default function FilterMenu({
                 // Clear all filters
                 onFilteringChange([]);
                 setInputValues({});
+                if (onInvalidateTableData) {
+                  onInvalidateTableData();
+                }
               }}
             >
               <Trash2 className="ml-[-12px] h-3 w-3" />
