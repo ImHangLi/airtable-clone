@@ -21,13 +21,14 @@ import type { SearchMatch } from "~/hooks/useTableSearch";
 
 import { RowNumberCell } from "./RowNumberCell";
 import { ColumnHeaderEditor } from "./ColumnHeaderEditor";
+import { ColumnRenameForm } from "./ColumnRenameForm";
 import { RowContextMenu } from "./RowContextMenu";
 import { createCellRenderer } from "./cellRenderers";
 import { CELL_CONFIG, baseCellStyle } from "./constants";
 import { useSearchScrolling } from "~/hooks/useSearchScrolling";
 import { DropdownMenu, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import AddColumnForm from "./AddcolumnForm";
-import { Plus, Baseline, Hash } from "lucide-react";
+import { Plus, Baseline, Hash, ChevronDown } from "lucide-react";
 import { FloatingAddRowButton } from "./FloatingAddRowButton";
 import { DraftRow } from "./DraftRow";
 
@@ -41,11 +42,61 @@ interface TableViewProps {
   currentTargetMatch?: SearchMatch | null;
 }
 
-const getCellWidth = (isRowNumber = false) => ({
+// Style utilities and constants
+const COLORS = {
+  border: "#dee1e3",
+  hover: "#f3f4f6",
+  editing: "#186ce4",
+  newRow: "#dbeafe",
+  newRowHover: "#c7d2fe",
+  background: "#f2f4f8",
+  headerBg: "rgb(243, 244, 246)",
+  footerBg: "#f8f9fa",
+  white: "white",
+  searchHighlight: "#f1cf6b",
+  searchHighlightSecondary: "#fff3d3",
+} as const;
+
+const SEARCH_HIGHLIGHT_COLORS = {
+  primary: "#f1cf6b",
+  primaryHover: "#efc455",
+  secondary: "#fff3d3",
+  secondaryHover: "#ffeaa3",
+  columnHighlight: "#CFF5D1",
+  columnHighlightHover: "#b8e6c1",
+  otherHighlight: "#fff2ea",
+  otherHighlightHover: "#f5e6d3",
+} as const;
+
+// Style helper functions
+const createCellWidthStyle = (isRowNumber = false) => ({
   width: isRowNumber ? CELL_CONFIG.rowNumberWidth : CELL_CONFIG.defaultWidth,
   minWidth: isRowNumber ? CELL_CONFIG.rowNumberWidth : CELL_CONFIG.defaultWidth,
   maxWidth: isRowNumber ? CELL_CONFIG.rowNumberWidth : CELL_CONFIG.defaultWidth,
 });
+
+const createStickyStyle = (
+  position: "row-number" | "primary-column",
+  zIndex = 12,
+  backgroundColor: string = COLORS.white,
+) => ({
+  position: "sticky" as const,
+  left: position === "row-number" ? 0 : CELL_CONFIG.rowNumberWidth,
+  zIndex,
+  backgroundColor,
+});
+
+const createBorderStyle = (isEditing = false) => ({
+  borderRight: `1px solid ${isEditing ? COLORS.editing : COLORS.border}`,
+  borderTop: isEditing ? `1px solid ${COLORS.editing}` : "none",
+  borderBottom: `1px solid ${isEditing ? COLORS.editing : COLORS.border}`,
+  borderLeft: isEditing ? `1px solid ${COLORS.editing}` : "none",
+  ...(isEditing && {
+    boxShadow: `0 0 0 1px ${COLORS.editing} inset`,
+  }),
+});
+
+const getCellWidth = (isRowNumber = false) => createCellWidthStyle(isRowNumber);
 
 // Main TableView component with virtualization
 export default function TableView({
@@ -94,6 +145,19 @@ export default function TableView({
     position: { x: 0, y: 0 },
   });
 
+  // Column rename form state
+  const [columnRenameForm, setColumnRenameForm] = useState<{
+    isOpen: boolean;
+    columnId: string | null;
+    columnName: string | null;
+    position: { x: number; y: number };
+  }>({
+    isOpen: false,
+    columnId: null,
+    columnName: null,
+    position: { x: 0, y: 0 },
+  });
+
   // Hidden columns state
   const columnVisibility = useMemo(() => {
     const visibility: VisibilityState = {
@@ -131,7 +195,9 @@ export default function TableView({
       );
       if (!searchMatch) return {};
       return {
-        backgroundColor: searchMatch.isCurrentTarget ? "#f1cf6b" : "#fff3d3",
+        backgroundColor: searchMatch.isCurrentTarget
+          ? SEARCH_HIGHLIGHT_COLORS.primary
+          : SEARCH_HIGHLIGHT_COLORS.secondary,
       };
     },
     [searchMatches],
@@ -254,9 +320,35 @@ export default function TableView({
     [],
   );
 
+  // Handle opening rename form directly
+  const handleOpenRenameForm = useCallback(
+    (e: React.MouseEvent, columnId: string, columnName: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = (e.target as HTMLElement).getBoundingClientRect();
+      setColumnRenameForm({
+        isOpen: true,
+        columnId,
+        columnName,
+        position: { x: rect.left, y: rect.bottom + 4 },
+      });
+    },
+    [],
+  );
+
   // Handle column editor close
   const handleColumnEditorClose = useCallback(() => {
     setColumnEditor((prev) => ({
+      ...prev,
+      isOpen: false,
+      columnId: null,
+      columnName: null,
+    }));
+  }, []);
+
+  // Handle column rename form close
+  const handleColumnRenameFormClose = useCallback(() => {
+    setColumnRenameForm((prev) => ({
       ...prev,
       isOpen: false,
       columnId: null,
@@ -288,6 +380,32 @@ export default function TableView({
       }
     },
     [columnEditor.columnId, handleColumnEditorClose, tableActions],
+  );
+
+  // Handle column update from rename form
+  const handleColumnRenameUpdate = useCallback(
+    async (columnName: string) => {
+      if (!columnRenameForm.columnId) return;
+
+      handleColumnRenameFormClose();
+
+      setSavingStatus("Updating column...");
+      try {
+        const success = await tableActions.updateColumn(
+          columnRenameForm.columnId,
+          columnName,
+        );
+        if (!success) {
+          toast.error("Failed to update column");
+        }
+      } catch (error) {
+        console.error("Error updating column:", error);
+        toast.error("Failed to update column");
+      } finally {
+        setSavingStatus(null);
+      }
+    },
+    [columnRenameForm.columnId, handleColumnRenameFormClose, tableActions],
   );
 
   // Handle column delete from editor
@@ -325,27 +443,46 @@ export default function TableView({
   // Memoized header renderer
   const createHeaderRenderer = useCallback(
     (columnId: string, columnName: string, columnType: "text" | "number") => {
+      const handleChevronClick = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handleColumnHeaderRightClick(e, columnId, columnName);
+      };
+
+      const handleDoubleClick = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handleOpenRenameForm(e, columnId, columnName);
+      };
+
       const columnHeaderEditor = () => (
         <button
-          className="h-full w-full bg-transparent text-left text-[13px] outline-none hover:bg-gray-50 focus:bg-gray-50"
+          className="group h-full w-full bg-transparent text-left text-[13px] outline-none hover:bg-gray-50 focus:bg-gray-50"
           style={baseCellStyle}
           onContextMenu={(e) =>
             handleColumnHeaderRightClick(e, columnId, columnName)
           }
+          onDoubleClick={handleDoubleClick}
         >
-          <div className="flex items-center gap-1.5">
-            {columnType === "text" ? (
-              <Baseline className="h-3.5 w-3.5 text-gray-500" />
-            ) : (
-              <Hash className="h-3.5 w-3.5 text-gray-500" />
-            )}
-            <span>{columnName}</span>
+          <div className="flex w-full items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              {columnType === "text" ? (
+                <Baseline className="h-3.5 w-3.5 text-gray-500" />
+              ) : (
+                <Hash className="h-3.5 w-3.5 text-gray-500" />
+              )}
+              <span>{columnName}</span>
+            </div>
+            <ChevronDown
+              className="h-3.5 w-3.5 cursor-pointer text-gray-400 hover:text-gray-600"
+              onClick={handleChevronClick}
+            />
           </div>
         </button>
       );
       return columnHeaderEditor;
     },
-    [handleColumnHeaderRightClick],
+    [handleColumnHeaderRightClick, handleOpenRenameForm],
   );
 
   // Create table columns with enhanced meta
@@ -517,62 +654,187 @@ export default function TableView({
       if (hasHighlight) {
         const baseColor = combinedHighlightStyle.backgroundColor as string;
         if (isHovered) {
-          if (baseColor === "#f1cf6b") return "#efc455";
-          if (baseColor === "#fff3d3") return "#ffeaa3";
-          if (baseColor === "#CFF5D1") return "#b8e6c1";
-          if (baseColor === "#fff2ea") return "#f5e6d3";
+          if (baseColor === SEARCH_HIGHLIGHT_COLORS.primary)
+            return SEARCH_HIGHLIGHT_COLORS.primaryHover;
+          if (baseColor === SEARCH_HIGHLIGHT_COLORS.secondary)
+            return SEARCH_HIGHLIGHT_COLORS.secondaryHover;
+          if (baseColor === SEARCH_HIGHLIGHT_COLORS.columnHighlight)
+            return SEARCH_HIGHLIGHT_COLORS.columnHighlightHover;
+          if (baseColor === SEARCH_HIGHLIGHT_COLORS.otherHighlight)
+            return SEARCH_HIGHLIGHT_COLORS.otherHighlightHover;
           return baseColor;
         }
         return baseColor;
       }
 
       if (isNewlyAdded) {
-        return isHovered ? "#c7d2fe" : "#dbeafe";
+        return isHovered ? COLORS.newRowHover : COLORS.newRow;
       }
 
       if (isRowBeingEdited) {
-        return "#f3f4f6";
+        return COLORS.hover;
       }
 
       if (isHovered) {
-        return "#f3f4f6";
+        return COLORS.hover;
       }
 
-      return "white";
+      return COLORS.white;
     },
     [getCombinedHighlightStyle, hoveredRowId],
   );
 
+  // Style objects for reuse
+  const containerStyles = {
+    main: "relative flex-1 overflow-hidden bg-[#f2f4f8]",
+    extensionArea: {
+      className:
+        "absolute top-0 left-0 h-full border-r border-[#dee1e3] bg-gray-100",
+      style: { width: CELL_CONFIG.rowNumberWidth },
+    },
+    scrollContainer: "h-full overflow-auto",
+    content: {
+      style: {
+        width: "100%",
+        minWidth: totalColumnWidth + CELL_CONFIG.defaultWidth / 2 + 120,
+        minHeight: "100%",
+        paddingBottom: "120px",
+      },
+    },
+  };
+
+  const headerStyles = {
+    container: {
+      className: "sticky top-0 z-10 bg-gray-100",
+      style: { borderBottom: `1px solid ${COLORS.border}` },
+    },
+    cell: (isRowNumber: boolean, isPrimary: boolean) => ({
+      className: "flex items-center text-left font-normal",
+      style: {
+        ...baseCellStyle,
+        ...createCellWidthStyle(isRowNumber),
+        borderRight: `1px solid ${COLORS.border}`,
+        ...(isRowNumber &&
+          createStickyStyle("row-number", 15, COLORS.headerBg)),
+        ...(isPrimary &&
+          createStickyStyle("primary-column", 15, COLORS.headerBg)),
+      },
+    }),
+    addColumn: {
+      className:
+        "flex cursor-pointer items-center justify-center border-r bg-gray-100 transition-colors hover:bg-gray-50",
+      style: {
+        ...baseCellStyle,
+        width: CELL_CONFIG.defaultWidth / 2,
+        borderColor: COLORS.border,
+        position: "sticky" as const,
+        left: CELL_CONFIG.rowNumberWidth + CELL_CONFIG.defaultWidth,
+        zIndex: 15,
+      },
+    },
+    extension: {
+      className: "flex-1 bg-white",
+      style: { ...baseCellStyle, borderRight: "none" },
+    },
+  };
+
+  const rowStyles = {
+    container: (rowId: string, isEditing: boolean, isNewlyAdded: boolean) => ({
+      style: {
+        backgroundColor: getCellBackgroundColor(
+          rowId,
+          "",
+          isEditing,
+          isNewlyAdded,
+        ),
+        borderBottom: `1px solid ${COLORS.border}`,
+        transition: isNewlyAdded ? "background-color 1s ease-out" : "none",
+      },
+    }),
+    cell: (
+      isRowNumber: boolean,
+      isPrimary: boolean,
+      isEditing: boolean,
+      backgroundColor: string,
+      isNewlyAdded: boolean,
+    ) => ({
+      className: "relative flex items-center",
+      style: {
+        ...baseCellStyle,
+        ...createCellWidthStyle(isRowNumber),
+        ...createBorderStyle(isEditing),
+        backgroundColor,
+        transition: isNewlyAdded ? "background-color 0.5s ease-out" : "none",
+        zIndex: isEditing ? 10 : "auto",
+        ...(isRowNumber &&
+          createStickyStyle(
+            "row-number",
+            isEditing ? 20 : 12,
+            backgroundColor,
+          )),
+        ...(isPrimary &&
+          createStickyStyle(
+            "primary-column",
+            isEditing ? 20 : 12,
+            backgroundColor,
+          )),
+      },
+    }),
+  };
+
+  const footerStyles = {
+    container: {
+      className: "sticky bottom-0 z-20 overflow-clip bg-white",
+      style: {
+        borderTop: `1px solid ${COLORS.border}`,
+        borderBottom: `1px solid ${COLORS.border}`,
+      },
+    },
+    recordCount: {
+      className:
+        "flex cursor-default items-center justify-center text-[11px] text-gray-600",
+      style: {
+        ...baseCellStyle,
+        width: CELL_CONFIG.rowNumberWidth * 2,
+        borderRight: `1px solid ${COLORS.border}`,
+        fontWeight: "500",
+        whiteSpace: "nowrap" as const,
+        overflow: "visible" as const,
+        ...createStickyStyle("row-number", 25, COLORS.footerBg),
+      },
+    },
+    cell: (isPrimary: boolean) => ({
+      className: "flex items-center",
+      style: {
+        ...baseCellStyle,
+        ...createCellWidthStyle(false),
+        ...(isPrimary
+          ? createStickyStyle("primary-column", 25, COLORS.footerBg)
+          : { backgroundColor: COLORS.white }),
+      },
+    }),
+  };
+
   // Table View
   return (
-    <div className="relative flex-1 overflow-hidden bg-[#f2f4f8]">
+    <div className={containerStyles.main}>
       {/* Extension area */}
       <div
-        className="absolute top-0 left-0 h-full border-r border-[#dee1e3] bg-gray-100"
-        style={{
-          width: CELL_CONFIG.rowNumberWidth,
-        }}
+        className={containerStyles.extensionArea.className}
+        style={containerStyles.extensionArea.style}
       />
+
       {/* Main table scroll container */}
       <div
         ref={parentRef}
-        className="h-full overflow-auto"
+        className={containerStyles.scrollContainer}
         onScroll={handleScroll}
       >
-        <div
-          style={{
-            width: "100%", // Take full width to allow header extension
-            minWidth: totalColumnWidth + CELL_CONFIG.defaultWidth / 2 + 120, // Add 120px extra scrollable space
-            minHeight: "100%",
-            paddingBottom: "120px",
-          }}
-        >
+        <div style={containerStyles.content.style}>
           {/* Header */}
           <div
-            className="sticky top-0 z-10 bg-gray-100"
-            style={{
-              borderBottom: "1px solid #dee1e3",
-            }}
+            className={headerStyles.container.className}
+            style={headerStyles.container.style}
           >
             <div className="flex">
               {/* Existing table headers */}
@@ -580,26 +842,10 @@ export default function TableView({
                 headerGroup.headers.map((header) => (
                   <div
                     key={header.id}
-                    className="flex items-center text-left font-normal"
-                    style={{
-                      ...baseCellStyle,
-                      ...getCellWidth(header.id === "rowNumber"),
-                      borderRight: "1px solid #dee1e3",
-                      // Make row number column sticky
-                      ...(header.id === "rowNumber" && {
-                        position: "sticky",
-                        left: 0,
-                        zIndex: 15,
-                        backgroundColor: "rgb(243, 244, 246)", // Same as bg-gray-100
-                      }),
-                      // Make first data column (primary) sticky
-                      ...(header.column.getIndex() === 1 && {
-                        position: "sticky",
-                        left: CELL_CONFIG.rowNumberWidth,
-                        zIndex: 15,
-                        backgroundColor: "rgb(243, 244, 246)", // Same as bg-gray-100
-                      }),
-                    }}
+                    {...headerStyles.cell(
+                      header.id === "rowNumber",
+                      header.column.getIndex() === 1,
+                    )}
                   >
                     {header.isPlaceholder ? null : (
                       <div className="w-full text-[13px]">
@@ -614,18 +860,7 @@ export default function TableView({
               )}
 
               {/* Add Column Button */}
-              <div
-                className="flex cursor-pointer items-center justify-center border-r bg-gray-100 transition-colors hover:bg-gray-50"
-                style={{
-                  ...baseCellStyle,
-                  width: CELL_CONFIG.defaultWidth / 2,
-                  borderColor: "#dee1e3",
-                  // Make add column button sticky
-                  position: "sticky",
-                  left: CELL_CONFIG.rowNumberWidth + CELL_CONFIG.defaultWidth,
-                  zIndex: 15,
-                }}
-              >
+              <div {...headerStyles.addColumn}>
                 <DropdownMenu
                   open={isAddColumnOpen}
                   onOpenChange={setIsAddColumnOpen}
@@ -647,13 +882,7 @@ export default function TableView({
               </div>
 
               {/* Extension area to fill remaining space to the right */}
-              <div
-                className="flex-1 bg-white"
-                style={{
-                  ...baseCellStyle,
-                  borderRight: "none",
-                }}
-              />
+              <div {...headerStyles.extension} />
             </div>
           </div>
 
@@ -669,7 +898,7 @@ export default function TableView({
             }}
           />
 
-          {/* Virtualized Table Body - no changes to existing rows */}
+          {/* Virtualized Table Body */}
           <div
             style={{
               height: `${rowVirtualizer.getTotalSize()}px`,
@@ -693,16 +922,11 @@ export default function TableView({
                     height: `${virtualRow.size}px`,
                     transform: `translateY(${virtualRow.start}px)`,
                     width: totalColumnWidth,
-                    backgroundColor: getCellBackgroundColor(
+                    ...rowStyles.container(
                       row.original.id,
-                      row.getVisibleCells()[0]?.column.id ?? "",
                       isRowBeingEdited,
                       isNewlyAdded,
-                    ),
-                    borderBottom: "1px solid #dee1e3",
-                    transition: isNewlyAdded
-                      ? "background-color 1s ease-out"
-                      : "none",
+                    ).style,
                   }}
                   onMouseEnter={() => {
                     if (
@@ -723,10 +947,16 @@ export default function TableView({
                         editingCell?.rowId === row.original.id &&
                         editingCell?.columnId === cell.column.id;
 
+                      const cellBackgroundColor = getCellBackgroundColor(
+                        row.original.id,
+                        cell.column.id,
+                        isEditing,
+                        isNewlyAdded,
+                      );
+
                       return (
                         <div
                           key={cell.id}
-                          className="relative flex items-center"
                           data-cell-id={`${row.original.id}-${cell.column.id}`}
                           {...(cell.column.id === "rowNumber" && {
                             "data-sticky": "row-number",
@@ -734,65 +964,13 @@ export default function TableView({
                           {...(cell.column.getIndex() === 1 && {
                             "data-sticky": "primary-column",
                           })}
-                          style={{
-                            ...baseCellStyle,
-                            ...getCellWidth(cell.column.id === "rowNumber"),
-                            borderRight: isEditing
-                              ? "1px solid #186ce4"
-                              : "1px solid #dee1e3",
-                            borderTop: isEditing ? "1px solid #186ce4" : "none",
-                            borderBottom: isEditing
-                              ? "1px solid #186ce4"
-                              : "1px solid #dee1e3",
-                            borderLeft: isEditing
-                              ? "1px solid #186ce4"
-                              : "none",
-                            zIndex: isEditing ? 10 : "auto",
-                            boxShadow: isEditing
-                              ? "0 0 0 1px #186ce4 inset"
-                              : "none",
-                            backgroundColor: getCellBackgroundColor(
-                              row.original.id,
-                              cell.column.id,
-                              isEditing,
-                              isNewlyAdded,
-                            ),
-                            transition: isNewlyAdded
-                              ? "background-color 0.5s ease-out"
-                              : "none",
-                            // Make row number cells sticky
-                            ...(cell.column.id === "rowNumber" && {
-                              position: "sticky",
-                              left: 0,
-                              zIndex: isEditing ? 20 : 12,
-                              backgroundColor: getCellBackgroundColor(
-                                row.original.id,
-                                cell.column.id,
-                                isEditing,
-                                isNewlyAdded,
-                              ),
-                              borderBottom: "1px solid #dee1e3",
-                              transition: isNewlyAdded
-                                ? "background-color 0.5s ease-out"
-                                : "none",
-                            }),
-                            // Make first data column (primary) cells sticky
-                            ...(cell.column.getIndex() === 1 && {
-                              position: "sticky",
-                              left: CELL_CONFIG.rowNumberWidth,
-                              zIndex: isEditing ? 20 : 12,
-                              backgroundColor: getCellBackgroundColor(
-                                row.original.id,
-                                cell.column.id,
-                                isEditing,
-                                isNewlyAdded,
-                              ),
-                              borderBottom: "1px solid #dee1e3",
-                              transition: isNewlyAdded
-                                ? "background-color 0.5s ease-out"
-                                : "none",
-                            }),
-                          }}
+                          {...rowStyles.cell(
+                            cell.column.id === "rowNumber",
+                            cell.column.getIndex() === 1,
+                            isEditing,
+                            cellBackgroundColor,
+                            isNewlyAdded,
+                          )}
                         >
                           {flexRender(
                             cell.column.columnDef.cell,
@@ -814,8 +992,10 @@ export default function TableView({
                   height: `${CELL_CONFIG.height}px`,
                   transform: `translateY(${rowVirtualizer.getTotalSize()}px)`,
                   width: totalColumnWidth,
-                  borderBottom: "1px solid #dee1e3",
-                  backgroundColor: isAddRowHovered ? "#f3f4f6" : "white",
+                  borderBottom: `1px solid ${COLORS.border}`,
+                  backgroundColor: isAddRowHovered
+                    ? COLORS.hover
+                    : COLORS.white,
                   transition: "background-color 0.1s ease",
                 }}
                 onMouseEnter={() => setIsAddRowHovered(true)}
@@ -829,13 +1009,14 @@ export default function TableView({
                     data-sticky="add-row-number"
                     style={{
                       ...baseCellStyle,
-                      ...getCellWidth(true),
-                      borderRight: "1px solid #dee1e3",
-                      position: "sticky",
-                      left: 0,
-                      zIndex: 12,
-                      backgroundColor: isAddRowHovered ? "#f3f4f6" : "white",
-                      borderBottom: "1px solid #dee1e3",
+                      ...createCellWidthStyle(true),
+                      borderRight: `1px solid ${COLORS.border}`,
+                      ...createStickyStyle(
+                        "row-number",
+                        12,
+                        isAddRowHovered ? COLORS.hover : COLORS.white,
+                      ),
+                      borderBottom: `1px solid ${COLORS.border}`,
                     }}
                   >
                     <Plus className="ml-1 h-4 w-4 text-gray-400" />
@@ -857,23 +1038,21 @@ export default function TableView({
                     .map((column, index) => (
                       <div
                         key={column.id}
-                        className="relative flex items-center"
+                        className="relative flex items-center bg-white"
                         {...(index === 0 && {
                           "data-sticky": "add-primary-column",
                         })}
                         style={{
                           ...baseCellStyle,
-                          ...getCellWidth(false),
-                          borderRight: "1px solid #dee1e3",
-                          ...(index === 0 && {
-                            position: "sticky",
-                            left: CELL_CONFIG.rowNumberWidth,
-                            zIndex: 12,
-                            backgroundColor: isAddRowHovered
-                              ? "#f3f4f6"
-                              : "white",
-                            borderBottom: "1px solid #dee1e3",
-                          }),
+                          ...createCellWidthStyle(false),
+                          borderRight: `1px solid ${COLORS.border}`,
+                          ...(index === 0 &&
+                            createStickyStyle(
+                              "primary-column",
+                              12,
+                              isAddRowHovered ? COLORS.hover : COLORS.white,
+                            )),
+                          borderBottom: `1px solid ${COLORS.border}`,
                         }}
                       />
                     ))}
@@ -888,7 +1067,7 @@ export default function TableView({
                 style={{
                   top: `${rowVirtualizer.getTotalSize() + (shouldShowAddRowButton ? CELL_CONFIG.height : 0) + (isDraftRowVisible ? CELL_CONFIG.height : 0)}px`,
                   width: totalColumnWidth,
-                  borderBottom: "1px solid #dee1e3",
+                  borderBottom: `1px solid ${COLORS.border}`,
                 }}
               >
                 <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -907,7 +1086,7 @@ export default function TableView({
           className="sticky z-30 bg-white"
           style={{
             bottom: `${CELL_CONFIG.height}px`, // Position above the footer
-            borderTop: "1px solid #dee1e3",
+            borderTop: `1px solid ${COLORS.border}`,
           }}
         >
           <DraftRow
@@ -924,31 +1103,12 @@ export default function TableView({
       )}
 
       {/* Sticky Footer Row - Record Count */}
-      <div
-        className="sticky bottom-0 z-20 overflow-clip bg-white"
-        style={{
-          borderTop: "1px solid #dee1e3",
-          borderBottom: "1px solid #dee1e3",
-        }}
-      >
+      <div {...footerStyles.container}>
         <div className="flex">
           {/* Record count in first cell */}
           <div
-            className="flex cursor-default items-center justify-center text-[11px] text-gray-600"
-            style={{
-              ...baseCellStyle,
-              width: CELL_CONFIG.rowNumberWidth * 2,
-              borderRight: "1px solid #dee1e3",
-              backgroundColor: "#f8f9fa",
-              fontWeight: "500",
-              whiteSpace: "nowrap",
-              overflow: "visible", // Allow text to show fully
-              // Make footer record count sticky
-              position: "sticky",
-              left: 0,
-              zIndex: 25,
-            }}
-            title={`${tableData.totalDBRowCount.toLocaleString()} total records (${tableData.rows.length.toLocaleString()} loaded)`} // Show full count on hover
+            {...footerStyles.recordCount}
+            title={`${tableData.totalDBRowCount.toLocaleString()} total records (${tableData.rows.length.toLocaleString()} loaded)`}
           >
             {tableData.totalDBRowCount.toLocaleString()} records
           </div>
@@ -959,19 +1119,7 @@ export default function TableView({
             .map((column, index) => (
               <div
                 key={`footer-${column.id}`}
-                className="flex items-center"
-                style={{
-                  ...baseCellStyle,
-                  ...getCellWidth(false),
-                  backgroundColor: "white",
-                  // Make first data column sticky in footer
-                  ...(index === 0 && {
-                    position: "sticky",
-                    left: CELL_CONFIG.rowNumberWidth,
-                    zIndex: 25,
-                    backgroundColor: "#f8f9fa",
-                  }),
-                }}
+                {...footerStyles.cell(index === 0)}
               />
             ))}
 
@@ -981,7 +1129,7 @@ export default function TableView({
             style={{
               ...baseCellStyle,
               width: CELL_CONFIG.defaultWidth / 2,
-              backgroundColor: "white",
+              backgroundColor: COLORS.white,
             }}
           />
 
@@ -991,7 +1139,7 @@ export default function TableView({
             style={{
               ...baseCellStyle,
               borderRight: "none",
-              backgroundColor: "white",
+              backgroundColor: COLORS.white,
             }}
           />
         </div>
@@ -1023,6 +1171,18 @@ export default function TableView({
               tableData.columns.find((col) => col.id === columnEditor.columnId)
                 ?.is_primary ?? false
             }
+          />
+        )}
+
+      {/* Column Rename Form */}
+      {columnRenameForm.isOpen &&
+        columnRenameForm.columnId &&
+        columnRenameForm.columnName && (
+          <ColumnRenameForm
+            initialName={columnRenameForm.columnName}
+            position={columnRenameForm.position}
+            onUpdateAction={handleColumnRenameUpdate}
+            onCloseAction={handleColumnRenameFormClose}
           />
         )}
 

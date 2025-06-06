@@ -240,8 +240,15 @@ export default function TableNav({ baseId, currentTableId }: TableNavProps) {
   }, [form, persistFormState]);
 
   const handleTableClick = useCallback(
-    (tableId: string) => {
+    async (tableId: string) => {
       if (tableId.startsWith("temp-")) return;
+
+      // 🚨 Cancel any pending table data queries to prevent race conditions
+      try {
+        await utils.data.getInfiniteTableData.cancel();
+      } catch (error) {
+        console.warn("Failed to cancel pending queries:", error);
+      }
 
       const lastViewedViewId = getLastViewedView(tableId);
 
@@ -265,7 +272,12 @@ export default function TableNav({ baseId, currentTableId }: TableNavProps) {
           });
       }
     },
-    [router, baseId, utils.table.getTableDefaultView],
+    [
+      router,
+      baseId,
+      utils.table.getTableDefaultView,
+      utils.data.getInfiniteTableData,
+    ],
   );
 
   const handleTableRightClick = useCallback(
