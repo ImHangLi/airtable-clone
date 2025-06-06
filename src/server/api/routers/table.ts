@@ -10,7 +10,6 @@ import {
   type ColumnType,
   type SortDirection,
 } from "~/server/db/schema";
-import { randomUUID } from "crypto";
 import { faker } from "@faker-js/faker";
 import { z } from "zod";
 import type { FilterConfig } from "~/types/filtering";
@@ -98,7 +97,7 @@ export const tableRouter = createTRPCRouter({
           { name: "Age", type: "number" as ColumnType },
         ];
 
-        const columnIds = defaultColumns.map(() => randomUUID());
+        const columnIds = defaultColumns.map(() => crypto.randomUUID());
 
         await ctx.db.insert(columns).values(
           defaultColumns.map((column, index) => ({
@@ -140,7 +139,7 @@ export const tableRouter = createTRPCRouter({
         const cellData = [];
 
         for (let i = 0; i < rowCount; i++) {
-          const rowId = randomUUID();
+          const rowId = crypto.randomUUID();
           rowData.push({
             id: rowId,
             table_id: table.id,
@@ -321,7 +320,7 @@ export const tableRouter = createTRPCRouter({
           { name: "Age", type: "number" as ColumnType },
         ];
 
-        const columnIds = defaultColumns.map(() => randomUUID());
+        const columnIds = defaultColumns.map(() => crypto.randomUUID());
 
         await ctx.db.insert(columns).values(
           defaultColumns.map((column, index) => ({
@@ -363,7 +362,7 @@ export const tableRouter = createTRPCRouter({
         const cellData = [];
 
         for (let i = 0; i < rowCount; i++) {
-          const rowId = randomUUID();
+          const rowId = crypto.randomUUID();
           rowData.push({
             id: rowId,
             table_id: table.id,

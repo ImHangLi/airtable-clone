@@ -51,7 +51,7 @@ export function useTableRows({
         utils.data.getInfiniteTableData.getInfiniteData(queryParams);
 
       if (previousData && tableInfo) {
-        const tempRowId = `temp-${Date.now()}`;
+        const tempRowId = crypto.randomUUID();
         const emptyCells: Record<string, string | number> = {};
 
         tableInfo.columns.forEach((column: Column) => {
@@ -83,9 +83,6 @@ export function useTableRows({
 
       return { previousData };
     },
-    onSuccess: () => {
-      void utils.data.getInfiniteTableData.invalidate(queryParams);
-    },
     onError: (error, _, context) => {
       // 🎯 Only revert optimistic update on error, trust retries will handle transient issues
       if (context?.previousData) {
@@ -107,7 +104,7 @@ export function useTableRows({
           utils.data.getInfiniteTableData.getInfiniteData(queryParams);
 
         if (previousData && tableInfo) {
-          const tempRowId = `temp-${Date.now()}`;
+          const tempRowId = crypto.randomUUID();
           utils.data.getInfiniteTableData.setInfiniteData(
             queryParams,
             (oldData) => {
@@ -133,9 +130,6 @@ export function useTableRows({
         }
 
         return { previousData };
-      },
-      onSuccess: () => {
-        void utils.data.getInfiniteTableData.invalidate(queryParams);
       },
       onError: (error, _, context) => {
         // 🎯 Only revert optimistic update on error

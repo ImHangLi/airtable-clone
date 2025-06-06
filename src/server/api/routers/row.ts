@@ -2,7 +2,6 @@ import { eq, asc } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { columns, rows, cells, type Row, type Cell } from "~/server/db/schema";
-import { randomUUID } from "crypto";
 import { faker } from "@faker-js/faker";
 import { z } from "zod";
 import { getCellValue } from "./cell";
@@ -35,7 +34,7 @@ export const rowRouter = createTRPCRouter({
     .input(createRowSchema)
     .mutation(async ({ ctx, input }): Promise<{ id: string }> => {
       try {
-        const newRowId = randomUUID();
+        const newRowId = crypto.randomUUID();
 
         await ctx.db.insert(rows).values({
           id: newRowId,
@@ -93,7 +92,7 @@ export const rowRouter = createTRPCRouter({
         // Insert row and cells in a transaction for atomicity
         await ctx.db.transaction(async (tx) => {
           // Insert the row
-          newRowId = randomUUID();
+          newRowId = crypto.randomUUID();
           await tx.insert(rows).values({
             id: newRowId,
             table_id: tableId,
@@ -206,7 +205,7 @@ export const rowRouter = createTRPCRouter({
             const cellsToInsert = [];
 
             for (let i = 0; i < batchSize; i++) {
-              const rowId = randomUUID();
+              const rowId = crypto.randomUUID();
 
               rowsToInsert.push({
                 id: rowId,

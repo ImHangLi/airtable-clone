@@ -8,7 +8,6 @@ import {
   cells,
   type SortDirection,
 } from "~/server/db/schema";
-import { randomUUID } from "crypto";
 import { z } from "zod";
 
 // Column-related schemas
@@ -136,7 +135,7 @@ export const columnRouter = createTRPCRouter({
         const nextPosition = (maxPositionResult[0]?.maxPosition ?? -1) + 1;
 
         // Create the new column
-        const newColumnId = randomUUID();
+        const newColumnId = crypto.randomUUID();
         await ctx.db.insert(columns).values({
           id: newColumnId,
           base_id: table.base_id,

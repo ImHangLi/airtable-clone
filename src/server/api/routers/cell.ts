@@ -6,10 +6,10 @@ import { z } from "zod";
 
 // Cell-related schema and utility function
 export const cellValueSchema = z.object({
-  rowId: z.string(),
-  columnId: z.string(),
+  rowId: z.string().uuid("Invalid row ID"),
+  columnId: z.string().uuid("Invalid column ID"),
   value: z.union([z.string(), z.number()]),
-  baseId: z.string(),
+  baseId: z.string().uuid("Invalid base ID"),
 });
 
 // Exponential backoff configuration

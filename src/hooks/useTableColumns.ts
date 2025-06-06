@@ -73,10 +73,6 @@ export function useTableColumns({
 
       return { previousData };
     },
-    onSuccess: () => {
-      // 🎯 Optimistic update succeeded! Trust exponential backoff - no invalidation needed
-      console.log("Column updated successfully");
-    },
     onError: (error, _, context) => {
       // 🎯 Only revert optimistic update on error
       if (context?.previousData) {
@@ -129,10 +125,6 @@ export function useTableColumns({
 
       return { previousData };
     },
-    onSuccess: () => {
-      // 🎯 Optimistic delete succeeded! Trust exponential backoff - no invalidation needed
-      console.log("Column deleted successfully");
-    },
     onError: (error, _, context) => {
       // 🎯 Only revert optimistic update on error
       if (context?.previousData) {
@@ -153,7 +145,7 @@ export function useTableColumns({
         utils.data.getInfiniteTableData.getInfiniteData(queryParams);
 
       if (previousData && tableInfo) {
-        const tempColumnId = `temp-col-${Date.now()}`;
+        const tempColumnId = crypto.randomUUID();
         const now = new Date();
 
         // 🎯 Create a temporary column for optimistic update
@@ -201,49 +193,6 @@ export function useTableColumns({
       }
 
       return { previousData };
-    },
-    onSuccess: (result, _, context) => {
-      // 🎯 Optimistic update succeeded! Update temp ID to real ID
-      if (context?.tempColumnId) {
-        utils.data.getInfiniteTableData.setInfiniteData(
-          queryParams,
-          (oldData) => {
-            if (!oldData) return oldData;
-
-            const newPages = oldData.pages.map((page) => ({
-              ...page,
-              tableInfo: page.tableInfo
-                ? {
-                    ...page.tableInfo,
-                    columns: page.tableInfo.columns.map((col) =>
-                      col.id === context.tempColumnId
-                        ? { ...col, id: result.id }
-                        : col,
-                    ),
-                  }
-                : page.tableInfo,
-              items: page.items.map((row) => {
-                const tempValue = row.cells[context.tempColumnId];
-                if (tempValue !== undefined) {
-                  const newCells = { ...row.cells };
-                  newCells[result.id] = tempValue;
-                  delete newCells[context.tempColumnId];
-                  return { ...row, cells: newCells };
-                }
-                return row;
-              }),
-            }));
-
-            return {
-              ...oldData,
-              pages: newPages,
-            };
-          },
-        );
-      }
-
-      console.log(`Column created successfully with ID: ${result.id}`);
-      // No invalidation needed - trust our optimistic update + ID mapping
     },
     onError: (error, _, context) => {
       // 🎯 Only revert optimistic update on error
