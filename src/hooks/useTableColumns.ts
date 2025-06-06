@@ -3,7 +3,6 @@ import { api } from "~/trpc/react";
 import { toast } from "sonner";
 import type { QueryParams } from "./useTableData";
 import type { Column } from "~/server/db/schema";
-import { usePendingColumns } from "./usePendingColumns";
 
 export interface TableColumn {
   id: string;
@@ -37,16 +36,6 @@ export function useTableColumns({
   tableInfo,
 }: UseTableColumnsProps): UseTableColumnsReturn {
   const utils = api.useUtils();
-  const { addPendingColumn, markColumnReady, removePendingColumn } =
-    usePendingColumns();
-
-  // Helper function to invalidate all queries for this table
-  const invalidateAllTableQueries = async () => {
-    // Invalidate all getInfiniteTableData queries for this tableId
-    await utils.data.getInfiniteTableData.invalidate({
-      tableId,
-    });
-  };
 
   // Column mutations
   const updateColumnMutation = api.column.updateColumn.useMutation({
@@ -84,7 +73,12 @@ export function useTableColumns({
 
       return { previousData };
     },
+    onSuccess: () => {
+      // 🎯 Optimistic update succeeded! Trust exponential backoff - no invalidation needed
+      console.log("Column updated successfully");
+    },
     onError: (error, _, context) => {
+      // 🎯 Only revert optimistic update on error
       if (context?.previousData) {
         utils.data.getInfiniteTableData.setInfiniteData(
           queryParams,
@@ -92,8 +86,6 @@ export function useTableColumns({
         );
       }
       toast.error(`Failed to update column: ${error.message}`);
-      // Only invalidate on error to ensure data consistency
-      void invalidateAllTableQueries();
     },
   });
 
@@ -137,7 +129,12 @@ export function useTableColumns({
 
       return { previousData };
     },
+    onSuccess: () => {
+      // 🎯 Optimistic delete succeeded! Trust exponential backoff - no invalidation needed
+      console.log("Column deleted successfully");
+    },
     onError: (error, _, context) => {
+      // 🎯 Only revert optimistic update on error
       if (context?.previousData) {
         utils.data.getInfiniteTableData.setInfiniteData(
           queryParams,
@@ -145,7 +142,6 @@ export function useTableColumns({
         );
       }
       toast.error(`Failed to delete column: ${error.message}`);
-      void invalidateAllTableQueries();
     },
   });
 
@@ -160,10 +156,7 @@ export function useTableColumns({
         const tempColumnId = `temp-col-${Date.now()}`;
         const now = new Date();
 
-        // 🎯 Track this column as pending
-        addPendingColumn(tempColumnId);
-
-        // Create a temporary column with all required fields
+        // 🎯 Create a temporary column for optimistic update
         const newColumn = {
           id: tempColumnId,
           name,
@@ -209,22 +202,51 @@ export function useTableColumns({
 
       return { previousData };
     },
-    onSuccess: async (result, _, context) => {
-      // 🎯 Mark column as ready with real ID
+    onSuccess: (result, _, context) => {
+      // 🎯 Optimistic update succeeded! Update temp ID to real ID
       if (context?.tempColumnId) {
-        markColumnReady(context.tempColumnId, result.id);
+        utils.data.getInfiniteTableData.setInfiniteData(
+          queryParams,
+          (oldData) => {
+            if (!oldData) return oldData;
+
+            const newPages = oldData.pages.map((page) => ({
+              ...page,
+              tableInfo: page.tableInfo
+                ? {
+                    ...page.tableInfo,
+                    columns: page.tableInfo.columns.map((col) =>
+                      col.id === context.tempColumnId
+                        ? { ...col, id: result.id }
+                        : col,
+                    ),
+                  }
+                : page.tableInfo,
+              items: page.items.map((row) => {
+                const tempValue = row.cells[context.tempColumnId];
+                if (tempValue !== undefined) {
+                  const newCells = { ...row.cells };
+                  newCells[result.id] = tempValue;
+                  delete newCells[context.tempColumnId];
+                  return { ...row, cells: newCells };
+                }
+                return row;
+              }),
+            }));
+
+            return {
+              ...oldData,
+              pages: newPages,
+            };
+          },
+        );
       }
 
-      // ⚠️ KEEPING: Column creation is a structural change affecting all rows and views
-      // This invalidation ensures data consistency across all table components
-      await invalidateAllTableQueries();
+      console.log(`Column created successfully with ID: ${result.id}`);
+      // No invalidation needed - trust our optimistic update + ID mapping
     },
     onError: (error, _, context) => {
-      // 🎯 Remove from pending on error
-      if (context?.tempColumnId) {
-        removePendingColumn(context.tempColumnId);
-      }
-
+      // 🎯 Only revert optimistic update on error
       if (context?.previousData) {
         utils.data.getInfiniteTableData.setInfiniteData(
           queryParams,
@@ -232,7 +254,6 @@ export function useTableColumns({
         );
       }
       toast.error(`Failed to add column: ${error.message}`);
-      void invalidateAllTableQueries();
     },
   });
 
@@ -269,6 +290,7 @@ export function useTableColumns({
         type: "text" | "number",
       ): Promise<string | null> => {
         try {
+          // 🎯 Optimistic update + server reliability via exponential backoff
           const result = await addColumnMutation.mutateAsync({
             tableId,
             name,

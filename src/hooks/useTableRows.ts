@@ -3,7 +3,6 @@ import { api } from "~/trpc/react";
 import { toast } from "sonner";
 import type { Column } from "~/server/db/schema";
 import type { QueryParams } from "./useTableData";
-import { usePendingColumns } from "./usePendingColumns";
 
 export interface TableRow {
   id: string;
@@ -42,15 +41,6 @@ export function useTableRows({
   tableInfo,
 }: UseTableRowsProps): UseTableRowsReturn {
   const utils = api.useUtils();
-  const { isColumnPending, waitForColumn } = usePendingColumns();
-
-  // Helper function to invalidate all queries for this table
-  const invalidateAllTableQueries = async () => {
-    // Invalidate all getInfiniteTableData queries for this tableId
-    await utils.data.getInfiniteTableData.invalidate({
-      tableId,
-    });
-  };
 
   // Row mutations
   const createRowMutation = api.row.createRow.useMutation({
@@ -93,7 +83,12 @@ export function useTableRows({
 
       return { previousData };
     },
+    onSuccess: (result) => {
+      // 🎯 Optimistic update succeeded! Trust exponential backoff - no invalidation needed
+      console.log(`Row created successfully: ${result.id}`);
+    },
     onError: (error, _, context) => {
+      // 🎯 Only revert optimistic update on error, trust retries will handle transient issues
       if (context?.previousData) {
         utils.data.getInfiniteTableData.setInfiniteData(
           queryParams,
@@ -101,7 +96,6 @@ export function useTableRows({
         );
       }
       toast.error(`Failed to create row: ${error.message}`);
-      void invalidateAllTableQueries();
     },
   });
 
@@ -141,10 +135,12 @@ export function useTableRows({
 
         return { previousData };
       },
-      onSuccess: async () => {
-        await invalidateAllTableQueries();
+      onSuccess: (result) => {
+        // 🎯 Optimistic update succeeded! Trust exponential backoff - no invalidation needed
+        console.log(`Row with cell values created successfully: ${result.id}`);
       },
       onError: (error, _, context) => {
+        // 🎯 Only revert optimistic update on error
         if (context?.previousData) {
           utils.data.getInfiniteTableData.setInfiniteData(
             queryParams,
@@ -152,7 +148,6 @@ export function useTableRows({
           );
         }
         toast.error(`Failed to create row with cell values: ${error.message}`);
-        void invalidateAllTableQueries();
       },
     });
 
@@ -188,16 +183,28 @@ export function useTableRows({
 
       return { previousData };
     },
+    onSuccess: (result) => {
+      // 🎯 Optimistic update succeeded! Log attempt count but trust the update
+      if (result.attempts > 1) {
+        console.log(`Cell update succeeded after ${result.attempts} attempts`);
+      }
+      // No invalidation needed - trust our optimistic update + server success
+    },
     onError: (error, _, context) => {
+      // 🎯 Only revert optimistic update on permanent failure
       if (context?.previousData) {
         utils.data.getInfiniteTableData.setInfiniteData(
           queryParams,
           context.previousData,
         );
       }
-      toast.error(`Failed to update cell: ${error.message}`);
-      // Only invalidate on error to ensure data consistency
-      void invalidateAllTableQueries();
+
+      // Enhanced error message that accounts for retry attempts
+      const errorMessage = error.message.includes("multiple attempts")
+        ? "Cell update failed after multiple retries - please try again"
+        : `Failed to update cell: ${error.message}`;
+
+      toast.error(errorMessage);
     },
   });
 
@@ -229,7 +236,12 @@ export function useTableRows({
 
       return { previousData };
     },
+    onSuccess: () => {
+      // 🎯 Optimistic delete succeeded! Trust exponential backoff - no invalidation needed
+      console.log("Row deleted successfully");
+    },
     onError: (error, _, context) => {
+      // 🎯 Only revert optimistic update on error
       if (context?.previousData) {
         utils.data.getInfiniteTableData.setInfiniteData(
           queryParams,
@@ -237,7 +249,6 @@ export function useTableRows({
         );
       }
       toast.error(`Failed to delete row: ${error.message}`);
-      void invalidateAllTableQueries();
     },
   });
 
@@ -260,44 +271,12 @@ export function useTableRows({
         cellValues: Record<string, string | number>,
       ): Promise<string | null> => {
         try {
-          // 🎯 Check if any columns are pending and wait for them
-          const pendingColumns = Object.keys(cellValues).filter(
-            (columnId) => columnId !== "baseId" && isColumnPending(columnId),
-          );
-
-          if (pendingColumns.length > 0) {
-            // Wait for all pending columns to be ready
-            const realColumnIds = await Promise.all(
-              pendingColumns.map((columnId) => waitForColumn(columnId)),
-            );
-
-            // Map temp column IDs to real column IDs
-            const updatedCellValues = { ...cellValues };
-            pendingColumns.forEach((tempId, index) => {
-              const realId = realColumnIds[index];
-              if (
-                realId &&
-                realId !== tempId &&
-                updatedCellValues[tempId] !== undefined
-              ) {
-                updatedCellValues[realId] = updatedCellValues[tempId]!;
-                delete updatedCellValues[tempId];
-              }
-            });
-
-            const result = await createRowWithCellValuesMutation.mutateAsync({
-              tableId,
-              cellValues: { ...updatedCellValues, baseId },
-            });
-            return result.id;
-          } else {
-            // Normal flow - no pending columns
-            const result = await createRowWithCellValuesMutation.mutateAsync({
-              tableId,
-              cellValues: { ...cellValues, baseId },
-            });
-            return result.id;
-          }
+          // 🎯 Simplified! No more pending column checks - server handles retries
+          const result = await createRowWithCellValuesMutation.mutateAsync({
+            tableId,
+            cellValues: { ...cellValues, baseId },
+          });
+          return result.id;
         } catch (error) {
           console.error("Failed to add row with cell values:", error);
           return null;
@@ -310,25 +289,19 @@ export function useTableRows({
         value: string | number,
       ): Promise<boolean> => {
         try {
-          // 🎯 Check if column is pending creation
-          if (isColumnPending(columnId)) {
-            // Optimistic update already happened, now wait for column then update server
-            const realColumnId = await waitForColumn(columnId);
-            await updateCellMutation.mutateAsync({
-              rowId,
-              columnId: realColumnId,
-              value,
-              baseId,
-            });
-          } else {
-            // Normal flow - column exists
-            await updateCellMutation.mutateAsync({
-              rowId,
-              columnId,
-              value,
-              baseId,
-            });
+          // 🎯 Simplified! Server-side exponential backoff handles column readiness
+          const result = await updateCellMutation.mutateAsync({
+            rowId,
+            columnId,
+            value,
+            baseId,
+          });
+
+          // Log if multiple attempts were needed
+          if (result.attempts > 1) {
+            console.log(`Cell update required ${result.attempts} attempts`);
           }
+
           return true;
         } catch (error) {
           console.error("Failed to update cell:", error);
@@ -350,9 +323,7 @@ export function useTableRows({
       createRowMutation,
       tableId,
       baseId,
-      isColumnPending,
       createRowWithCellValuesMutation,
-      waitForColumn,
       updateCellMutation,
       deleteRowMutation,
     ],

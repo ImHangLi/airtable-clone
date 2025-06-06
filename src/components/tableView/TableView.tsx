@@ -619,8 +619,6 @@ export default function TableView({
           setTimeout(() => {
             setNewlyAddedRowId(null);
           }, 2000);
-
-          toast.success("Row created successfully");
         } else {
           toast.error("Failed to create row");
         }

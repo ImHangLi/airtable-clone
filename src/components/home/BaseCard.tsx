@@ -45,9 +45,6 @@ export function BaseCard({
       }
       toast.error("Failed to delete base. Please try again.");
     },
-    onSuccess() {
-      toast.success(`"${baseName}" base deleted successfully`);
-    },
     onSettled() {
       void utils.base.getAllByLastUpdated.invalidate();
     },
@@ -65,9 +62,6 @@ export function BaseCard({
       });
 
       return { previousBases };
-    },
-    onSuccess: () => {
-      toast.success("Base renamed successfully");
     },
     onError: (error, variables, context) => {
       if (context?.previousBases) {

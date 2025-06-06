@@ -1,7 +1,7 @@
 import { eq, asc } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { columns, rows, cells } from "~/server/db/schema";
+import { columns, rows, cells, type Row, type Cell } from "~/server/db/schema";
 import { randomUUID } from "crypto";
 import { faker } from "@faker-js/faker";
 import { z } from "zod";
@@ -194,12 +194,14 @@ export const rowRouter = createTRPCRouter({
             });
           }
 
-          const BATCH_SIZE = 500; // Batch size for database operations
-          const SYNC_ROWS = 1000; // Number of rows to insert synchronously
+          const BATCH_SIZE = 500; // Smaller batches to reduce DB load
+          const PARALLEL_BATCHES = 2; // Fewer parallel batches to avoid overwhelming DB
+          const SYNC_ROWS = 2000; // More rows for immediate feedback
           const TOTAL_ROWS = 100000;
-          const BATCH_DELAY = 25; // Reduced delay for better performance
+          const MAX_RETRIES = 3;
+          const RETRY_DELAY_BASE = 1000; // Base delay for exponential backoff
 
-          const createBatch = (batchSize: number) => {
+          const createBatch = (batchSize: number, batchId: number) => {
             const rowsToInsert = [];
             const cellsToInsert = [];
 
@@ -219,8 +221,6 @@ export const rowRouter = createTRPCRouter({
                 if (column.type === "text") {
                   if (column.name.toLowerCase().includes("name")) {
                     valueText = faker.person.fullName();
-                  } else if (column.name.toLowerCase().includes("email")) {
-                    valueText = faker.internet.email();
                   } else {
                     valueText = faker.lorem.word();
                   }
@@ -238,50 +238,168 @@ export const rowRouter = createTRPCRouter({
               }
             }
 
-            return { rowsToInsert, cellsToInsert };
+            return { rowsToInsert, cellsToInsert, batchId };
           };
 
-          // Insert the first 1000 rows synchronously for immediate feedback
-          for (
-            let syncBatch = 0;
-            syncBatch < SYNC_ROWS / BATCH_SIZE;
-            syncBatch++
-          ) {
-            const { rowsToInsert, cellsToInsert } = createBatch(BATCH_SIZE);
+          // Retry function with exponential backoff
+          const insertBatchWithRetry = async (
+            batchData: {
+              rowsToInsert: Row[];
+              cellsToInsert: Cell[];
+              batchId: number;
+            },
+            retryCount = 0,
+          ): Promise<{ success: boolean; batchId: number }> => {
+            try {
+              await ctx.db.insert(rows).values(batchData.rowsToInsert);
+              await ctx.db.insert(cells).values(batchData.cellsToInsert);
+              return { success: true, batchId: batchData.batchId };
+            } catch (error) {
+              if (retryCount < MAX_RETRIES) {
+                const delay = RETRY_DELAY_BASE * Math.pow(2, retryCount);
+                await new Promise((resolve) => setTimeout(resolve, delay));
+                return insertBatchWithRetry(batchData, retryCount + 1);
+              } else {
+                console.error(
+                  `Failed to insert batch ${batchData.batchId} after ${MAX_RETRIES} retries:`,
+                  error,
+                );
+                return { success: false, batchId: batchData.batchId };
+              }
+            }
+          };
 
-            await ctx.db.insert(rows).values(rowsToInsert);
-            await ctx.db.insert(cells).values(cellsToInsert);
+          // Insert the first batches synchronously for immediate feedback
+          const syncBatches = Math.ceil(SYNC_ROWS / BATCH_SIZE);
+          const syncPromises = [];
+
+          for (let syncBatch = 0; syncBatch < syncBatches; syncBatch++) {
+            const currentBatchSize = Math.min(
+              BATCH_SIZE,
+              SYNC_ROWS - syncBatch * BATCH_SIZE,
+            );
+            const batchData = createBatch(currentBatchSize, syncBatch);
+            syncPromises.push(
+              insertBatchWithRetry({
+                rowsToInsert: batchData.rowsToInsert.map((row) => ({
+                  ...row,
+                  created_at: new Date(),
+                  updated_at: new Date(),
+                })),
+                cellsToInsert: batchData.cellsToInsert,
+                batchId: batchData.batchId,
+              }),
+            );
           }
 
-          // Insert the remaining rows asynchronously
+          // Wait for sync batches to complete
+          const syncResults = await Promise.all(syncPromises);
+          const failedSyncBatches = syncResults.filter(
+            (result) => !result.success,
+          );
+
+          if (failedSyncBatches.length > 0) {
+            console.error(`${failedSyncBatches.length} sync batches failed`);
+          }
+
+          // Insert the remaining rows asynchronously with parallel processing
           const backgroundInsertion = async () => {
             const remainingRows = TOTAL_ROWS - SYNC_ROWS;
-            const remainingBatches = Math.ceil(remainingRows / BATCH_SIZE);
+            const totalBatches = Math.ceil(remainingRows / BATCH_SIZE);
+            const allBatches = [];
 
-            for (let batch = 0; batch < remainingBatches; batch++) {
+            // Create all batch data first
+            for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+              const currentBatchSize = Math.min(
+                BATCH_SIZE,
+                remainingRows - batchIndex * BATCH_SIZE,
+              );
+              const batchData = createBatch(
+                currentBatchSize,
+                syncBatches + batchIndex,
+              );
+              allBatches.push(batchData);
+            }
+
+            // Process batches in parallel groups
+            const failedBatches = [];
+
+            for (let i = 0; i < allBatches.length; i += PARALLEL_BATCHES) {
+              const batchGroup = allBatches.slice(i, i + PARALLEL_BATCHES);
+
               try {
-                const currentBatchSize = Math.min(
-                  BATCH_SIZE,
-                  remainingRows - batch * BATCH_SIZE,
+                const groupPromises = batchGroup.map((batchData) =>
+                  insertBatchWithRetry({
+                    rowsToInsert: batchData.rowsToInsert.map((row) => ({
+                      ...row,
+                      created_at: new Date(),
+                      updated_at: new Date(),
+                    })),
+                    cellsToInsert: batchData.cellsToInsert,
+                    batchId: batchData.batchId,
+                  }),
                 );
-                const { rowsToInsert, cellsToInsert } =
-                  createBatch(currentBatchSize);
 
-                await ctx.db.insert(rows).values(rowsToInsert);
-                await ctx.db.insert(cells).values(cellsToInsert);
+                const groupResults = await Promise.all(groupPromises);
+                const groupFailures = groupResults.filter(
+                  (result) => !result.success,
+                );
 
-                // Add a small delay to prevent overwhelming the database
-                if (batch < remainingBatches - 1) {
-                  await new Promise((resolve) =>
-                    setTimeout(resolve, BATCH_DELAY),
+                if (groupFailures.length > 0) {
+                  failedBatches.push(...groupFailures);
+                  console.error(
+                    `${groupFailures.length} batches failed in group starting at ${i}`,
                   );
                 }
-              } catch (batchError) {
+
+                // Add small delay between batch groups to reduce DB pressure
+                if (i + PARALLEL_BATCHES < allBatches.length) {
+                  await new Promise((resolve) => setTimeout(resolve, 100));
+                }
+              } catch (groupError) {
                 console.error(
-                  `Error in background batch ${batch + 1}:`,
-                  batchError,
+                  `Error processing batch group starting at ${i}:`,
+                  groupError,
                 );
-                // Continue with next batch
+                // Mark all batches in this group as failed
+                batchGroup.forEach((batch) => {
+                  failedBatches.push({
+                    success: false,
+                    batchId: batch.batchId,
+                  });
+                });
+              }
+            }
+
+            // Final retry for any remaining failed batches
+            if (failedBatches.length > 0) {
+              const finalRetryPromises = failedBatches.map(
+                async (failedBatch) => {
+                  const batchData = createBatch(
+                    BATCH_SIZE,
+                    failedBatch.batchId,
+                  );
+                  return insertBatchWithRetry({
+                    rowsToInsert: batchData.rowsToInsert.map((row) => ({
+                      ...row,
+                      created_at: new Date(),
+                      updated_at: new Date(),
+                    })),
+                    cellsToInsert: batchData.cellsToInsert,
+                    batchId: batchData.batchId,
+                  });
+                },
+              );
+
+              const finalResults = await Promise.all(finalRetryPromises);
+              const stillFailed = finalResults.filter(
+                (result) => !result.success,
+              );
+
+              if (stillFailed.length > 0) {
+                console.error(
+                  `❌ ${stillFailed.length} batches still failed after final retry`,
+                );
               }
             }
           };

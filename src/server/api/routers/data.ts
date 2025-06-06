@@ -49,7 +49,7 @@ export const dataRouter = createTRPCRouter({
         const searchTerm = search?.trim();
         const hasSearch = Boolean(searchTerm);
 
-        // Get table info and columns
+        // Get table info and columns in parallel
         const [tableInfoResult, tableColumns] = await Promise.all([
           ctx.db
             .select({
@@ -75,47 +75,15 @@ export const dataRouter = createTRPCRouter({
           });
         }
 
-        // Build sort clauses with proper NULL handling
-        const sortClauses = [];
-        if (sorting && sorting.length > 0) {
-          for (const sortConfig of sorting) {
-            const column = tableColumns.find((col) => col.id === sortConfig.id);
-            if (!column) continue;
-
-            if (column.type === "number") {
-              const subquery = sql`(
-                SELECT COALESCE(c.value_number, 0)
-                FROM ${cells} c
-                WHERE c.row_id = ${rows.id}
-                AND c.column_id = ${sortConfig.id}
-                LIMIT 1
-              )`;
-              sortClauses.push(
-                sortConfig.desc ? desc(subquery) : asc(subquery),
-              );
-            } else {
-              const subquery = sql`(
-                SELECT COALESCE(c.value_text, '')
-                FROM ${cells} c
-                WHERE c.row_id = ${rows.id}
-                AND c.column_id = ${sortConfig.id}
-                LIMIT 1
-              )`;
-              sortClauses.push(
-                sortConfig.desc ? desc(subquery) : asc(subquery),
-              );
-            }
-          }
-        }
-
-        sortClauses.push(asc(rows.created_at), asc(rows.id));
+        // Create column lookup map for better performance
+        const columnMap = new Map(tableColumns.map((col) => [col.id, col]));
 
         // Build base conditions
         const baseConditions: SQL[] = [eq(rows.table_id, tableId)];
 
-        // Add filter conditions if provided
+        // Add filter conditions with proper OR/AND logic support
         if (filtering && filtering.length > 0) {
-          // Sort filters by order to ensure proper logical operator application
+          // Sort filters by order for consistent application
           const sortedFilters = [...filtering].sort(
             (a, b) => a.order - b.order,
           );
@@ -125,9 +93,7 @@ export const dataRouter = createTRPCRouter({
           const negativeFilters: typeof sortedFilters = [];
 
           for (const filter of sortedFilters) {
-            const column = tableColumns.find(
-              (col) => col.id === filter.columnId,
-            );
+            const column = columnMap.get(filter.columnId);
             if (!column) continue;
 
             // Classify filters as positive (EXISTS) or negative (NOT EXISTS)
@@ -144,15 +110,13 @@ export const dataRouter = createTRPCRouter({
             }
           }
 
-          // Handle positive filters with optimized JOIN approach
+          // Handle positive filters with optimized approach that supports OR logic
           if (positiveFilters.length > 0) {
             // Build filter conditions for the optimized approach
             const filterConditions: SQL[] = [];
 
             for (const filter of positiveFilters) {
-              const column = tableColumns.find(
-                (col) => col.id === filter.columnId,
-              );
+              const column = columnMap.get(filter.columnId);
               if (!column) continue;
 
               const { operator, value } = filter;
@@ -211,12 +175,9 @@ export const dataRouter = createTRPCRouter({
               }
             }
 
-            // Use single EXISTS with optimized conditions
+            // Use optimized EXISTS with proper OR/AND logic
             if (filterConditions.length > 0) {
-              // Determine how many positive filters need to match
-              const requiredMatches = positiveFilters.length;
-
-              // Build the optimized EXISTS condition
+              // Build the combined condition with proper logical operators
               const combinedCondition = filterConditions.reduce(
                 (acc, condition, index) => {
                   if (index === 0) return condition;
@@ -234,8 +195,7 @@ export const dataRouter = createTRPCRouter({
                 },
               );
 
-              // For AND logic, we need all positive filters to match
-              // For OR logic, we need at least one to match
+              // Determine if we need AND logic (all filters must match) or OR logic (any filter can match)
               const hasOrLogic = positiveFilters.some(
                 (f) => f.logicalOperator === "or",
               );
@@ -249,6 +209,7 @@ export const dataRouter = createTRPCRouter({
                 )`);
               } else {
                 // For AND logic, use aggregation to ensure all filters match
+                const requiredMatches = positiveFilters.length;
                 baseConditions.push(sql`${requiredMatches} = (
                   SELECT COUNT(DISTINCT c.column_id)
                   FROM ${cells} c
@@ -261,9 +222,7 @@ export const dataRouter = createTRPCRouter({
 
           // Handle negative filters with individual EXISTS (these are harder to optimize)
           for (const filter of negativeFilters) {
-            const column = tableColumns.find(
-              (col) => col.id === filter.columnId,
-            );
+            const column = columnMap.get(filter.columnId);
             if (!column) continue;
 
             const { operator, value } = filter;
@@ -323,121 +282,183 @@ export const dataRouter = createTRPCRouter({
           }
         }
 
-        // Execute main query with offset-based pagination
-        const tableRows = await ctx.db
-          .select({
-            id: rows.id,
-            base_id: rows.base_id,
-            table_id: rows.table_id,
-            created_at: rows.created_at,
-            updated_at: rows.updated_at,
-          })
-          .from(rows)
-          .where(and(...baseConditions))
-          .orderBy(...sortClauses)
-          .offset(offset)
-          .limit(limit + 1); // +1 to check if there's a next page
+        // Build optimized sort clauses using CTEs for better performance
+        const sortClauses = [];
+        if (sorting && sorting.length > 0) {
+          for (const sortConfig of sorting) {
+            const column = columnMap.get(sortConfig.id);
+            if (!column) continue;
 
-        // Check if there's a next page and calculate next offset
+            if (column.type === "number") {
+              const subquery = sql`(
+                SELECT COALESCE(c.value_number, 0)
+                FROM ${cells} c
+                WHERE c.row_id = ${rows.id}
+                AND c.column_id = ${sortConfig.id}
+                LIMIT 1
+              )`;
+              sortClauses.push(
+                sortConfig.desc ? desc(subquery) : asc(subquery),
+              );
+            } else {
+              const subquery = sql`(
+                SELECT COALESCE(c.value_text, '')
+                FROM ${cells} c
+                WHERE c.row_id = ${rows.id}
+                AND c.column_id = ${sortConfig.id}
+                LIMIT 1
+              )`;
+              sortClauses.push(
+                sortConfig.desc ? desc(subquery) : asc(subquery),
+              );
+            }
+          }
+        }
+
+        // Add default sorting for consistency
+        sortClauses.push(asc(rows.created_at), asc(rows.id));
+
+        // Execute main query and total count in parallel for better performance
+        const hasFilters = filtering && filtering.length > 0;
+
+        const [tableRows, totalCountResult] = await Promise.all([
+          // Main query with optimized pagination
+          ctx.db
+            .select({
+              id: rows.id,
+              base_id: rows.base_id,
+              table_id: rows.table_id,
+              created_at: rows.created_at,
+              updated_at: rows.updated_at,
+            })
+            .from(rows)
+            .where(and(...baseConditions))
+            .orderBy(...sortClauses)
+            .offset(offset)
+            .limit(limit + 1), // +1 to check if there's a next page
+
+          // Total count query (only when filters are applied)
+          hasFilters
+            ? ctx.db
+                .select({ count: sql<number>`count(*)` })
+                .from(rows)
+                .where(and(...baseConditions))
+            : ctx.db
+                .select({ count: sql<number>`count(*)` })
+                .from(rows)
+                .where(eq(rows.table_id, tableId)),
+        ]);
+
+        // Calculate pagination
         let nextCursor: number | undefined = undefined;
         if (tableRows.length > limit) {
           tableRows.pop(); // Remove the extra row
           nextCursor = offset + limit;
         }
 
-        // Get cells for all rows efficiently
-        const rowIds = tableRows.map((row) => row.id);
-        let allCells: Array<{
-          row_id: string;
-          column_id: string;
-          value_text: string | null;
-          value_number: number | null;
-        }> = [];
+        const totalRowCount = Number(totalCountResult[0]?.count ?? 0);
 
-        if (rowIds.length > 0) {
-          allCells = await ctx.db
-            .select({
-              row_id: cells.row_id,
-              column_id: cells.column_id,
-              value_text: cells.value_text,
-              value_number: cells.value_number,
-            })
-            .from(cells)
-            .where(inArray(cells.row_id, rowIds));
+        // Early return if no rows
+        if (tableRows.length === 0) {
+          return {
+            tableInfo: {
+              name: tableInfo.name,
+              columns: tableColumns,
+            },
+            items: [],
+            searchMatches: [],
+            nextCursor,
+            totalRowCount,
+            isFilterResult: hasFilters,
+          };
         }
 
-        // Build cells map efficiently with default values for all columns
+        const rowIds = tableRows.map((row) => row.id);
+
+        // Get cells and search matches in parallel
+        const cellsPromise = ctx.db
+          .select({
+            row_id: cells.row_id,
+            column_id: cells.column_id,
+            value_text: cells.value_text,
+            value_number: cells.value_number,
+          })
+          .from(cells)
+          .where(inArray(cells.row_id, rowIds));
+
+        const searchMatchesPromise =
+          hasSearch && searchTerm
+            ? ctx.db
+                .select({
+                  row_id: cells.row_id,
+                  column_id: cells.column_id,
+                  value_text: cells.value_text,
+                  value_number: cells.value_number,
+                })
+                .from(cells)
+                .where(
+                  and(
+                    inArray(cells.row_id, rowIds),
+                    sql`(
+                    (${cells.value_text} ILIKE ${`%${searchTerm}%`} AND ${cells.value_text} IS NOT NULL AND ${cells.value_text} != '') OR
+                    (CAST(${cells.value_number} AS TEXT) ILIKE ${`%${searchTerm}%`} AND ${cells.value_number} IS NOT NULL)
+                  )`,
+                  ),
+                )
+            : Promise.resolve([]);
+
+        const [allCells, searchResults] = await Promise.all([
+          cellsPromise,
+          searchMatchesPromise,
+        ]);
+
+        // Build cells map efficiently with optimized memory allocation
         const cellsByRowId = new Map<string, Record<string, string | number>>();
-        rowIds.forEach((rowId) => {
-          // Initialize with default values for all columns
+
+        // Initialize with default values using more efficient approach
+        for (const rowId of rowIds) {
           const defaultCells: Record<string, string | number> = {};
-          tableColumns.forEach((column) => {
+          for (const column of tableColumns) {
             defaultCells[column.id] = ""; // Default empty string for all cell types
-          });
+          }
           cellsByRowId.set(rowId, defaultCells);
-        });
+        }
 
-        // Then populate with actual cell values
-        allCells.forEach((cell) => {
-          const existingCells = cellsByRowId.get(cell.row_id) ?? {};
-          existingCells[cell.column_id] =
-            cell.value_text ?? cell.value_number ?? "";
-          cellsByRowId.set(cell.row_id, existingCells);
-        });
+        // Populate with actual cell values
+        for (const cell of allCells) {
+          const existingCells = cellsByRowId.get(cell.row_id);
+          if (existingCells) {
+            existingCells[cell.column_id] =
+              cell.value_text ?? cell.value_number ?? "";
+          }
+        }
 
-        // Format rows with cells
-        const rowsWithCells = tableRows.map((row) => ({
-          id: row.id,
-          cells: cellsByRowId.get(row.id) ?? {},
-        }));
-
-        // Calculate search matches at database level if there's a search query
+        // Process search matches efficiently
         let searchMatches: Array<{
           rowId: string;
           columnId: string;
           cellValue: string;
         }> = [];
 
-        if (hasSearch && searchTerm && rowIds.length > 0) {
-          const searchPattern = `%${searchTerm}%`;
-
-          // Get all matching cells without ordering first
-          const allMatches = await ctx.db
-            .select({
-              row_id: cells.row_id,
-              column_id: cells.column_id,
-              value_text: cells.value_text,
-              value_number: cells.value_number,
-            })
-            .from(cells)
-            .where(
-              and(
-                inArray(cells.row_id, rowIds),
-                sql`(
-                  (${cells.value_text} ILIKE ${searchPattern} AND ${cells.value_text} IS NOT NULL AND ${cells.value_text} != '') OR
-                  (CAST(${cells.value_number} AS TEXT) ILIKE ${searchPattern} AND ${cells.value_number} IS NOT NULL)
-                )`,
-              ),
-            );
-
-          // Create maps for ordering
+        if (hasSearch && searchResults.length > 0) {
+          // Create optimized lookup maps
           const rowOrderMap = new Map<string, number>();
+          const columnOrderMap = new Map<string, number>();
+
           rowIds.forEach((rowId, index) => {
             rowOrderMap.set(rowId, index);
           });
 
-          const columnOrderMap = new Map<string, number>();
           tableColumns.forEach((column, index) => {
             columnOrderMap.set(column.id, index);
           });
 
-          // Sort matches: first by row position (top to bottom), then by column position (left to right)
-          const sortedMatches = allMatches
+          // Sort and format matches efficiently
+          searchMatches = searchResults
             .map((match) => ({
-              row_id: match.row_id,
-              column_id: match.column_id,
-              value_text: match.value_text,
-              value_number: match.value_number,
+              rowId: match.row_id,
+              columnId: match.column_id,
+              cellValue: match.value_text ?? String(match.value_number),
               rowOrder: rowOrderMap.get(match.row_id) ?? 999999,
               columnOrder: columnOrderMap.get(match.column_id) ?? 999999,
             }))
@@ -448,33 +469,19 @@ export const dataRouter = createTRPCRouter({
               }
               // Then sort by column (left to right)
               return a.columnOrder - b.columnOrder;
-            });
-
-          // Format the matches
-          searchMatches = sortedMatches.map((match) => ({
-            rowId: match.row_id,
-            columnId: match.column_id,
-            cellValue: match.value_text ?? String(match.value_number),
-          }));
+            })
+            .map(({ rowId, columnId, cellValue }) => ({
+              rowId,
+              columnId,
+              cellValue,
+            }));
         }
 
-        // Get total row count efficiently
-        let totalRowCount: number;
-        const hasFilters = filtering && filtering.length > 0;
-
-        if (hasFilters) {
-          const countResult = await ctx.db
-            .select({ count: sql<number>`count(*)` })
-            .from(rows)
-            .where(and(...baseConditions));
-          totalRowCount = Number(countResult[0]?.count ?? 0);
-        } else {
-          const totalCountResult = await ctx.db
-            .select({ count: sql<number>`count(*)` })
-            .from(rows)
-            .where(eq(rows.table_id, tableId));
-          totalRowCount = Number(totalCountResult[0]?.count ?? 0);
-        }
+        // Format final response efficiently
+        const rowsWithCells = tableRows.map((row) => ({
+          id: row.id,
+          cells: cellsByRowId.get(row.id) ?? {},
+        }));
 
         return {
           tableInfo: {
