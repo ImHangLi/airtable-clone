@@ -3,6 +3,7 @@ import { api } from "~/trpc/react";
 import { toast } from "sonner";
 import type { QueryParams } from "./useTableData";
 import type { Column } from "~/server/db/schema";
+import { usePendingColumns } from "./usePendingColumns";
 
 export interface TableColumn {
   id: string;
@@ -36,6 +37,8 @@ export function useTableColumns({
   tableInfo,
 }: UseTableColumnsProps): UseTableColumnsReturn {
   const utils = api.useUtils();
+  const { addPendingColumn, markColumnReady, removePendingColumn } =
+    usePendingColumns();
 
   // Helper function to invalidate all queries for this table
   const invalidateAllTableQueries = async () => {
@@ -81,10 +84,6 @@ export function useTableColumns({
 
       return { previousData };
     },
-    onSuccess: async () => {
-      // Invalidate all queries for this table to sync across views
-      await invalidateAllTableQueries();
-    },
     onError: (error, _, context) => {
       if (context?.previousData) {
         utils.data.getInfiniteTableData.setInfiniteData(
@@ -93,6 +92,7 @@ export function useTableColumns({
         );
       }
       toast.error(`Failed to update column: ${error.message}`);
+      // Only invalidate on error to ensure data consistency
       void invalidateAllTableQueries();
     },
   });
@@ -137,10 +137,6 @@ export function useTableColumns({
 
       return { previousData };
     },
-    onSuccess: async () => {
-      // Invalidate all queries for this table to sync across views
-      await invalidateAllTableQueries();
-    },
     onError: (error, _, context) => {
       if (context?.previousData) {
         utils.data.getInfiniteTableData.setInfiniteData(
@@ -163,6 +159,9 @@ export function useTableColumns({
       if (previousData && tableInfo) {
         const tempColumnId = `temp-col-${Date.now()}`;
         const now = new Date();
+
+        // 🎯 Track this column as pending
+        addPendingColumn(tempColumnId);
 
         // Create a temporary column with all required fields
         const newColumn = {
@@ -204,15 +203,28 @@ export function useTableColumns({
             };
           },
         );
+
+        return { previousData, tempColumnId };
       }
 
       return { previousData };
     },
-    onSuccess: async () => {
-      // Invalidate all queries for this table to sync across views
+    onSuccess: async (result, _, context) => {
+      // 🎯 Mark column as ready with real ID
+      if (context?.tempColumnId) {
+        markColumnReady(context.tempColumnId, result.id);
+      }
+
+      // ⚠️ KEEPING: Column creation is a structural change affecting all rows and views
+      // This invalidation ensures data consistency across all table components
       await invalidateAllTableQueries();
     },
     onError: (error, _, context) => {
+      // 🎯 Remove from pending on error
+      if (context?.tempColumnId) {
+        removePendingColumn(context.tempColumnId);
+      }
+
       if (context?.previousData) {
         utils.data.getInfiniteTableData.setInfiniteData(
           queryParams,

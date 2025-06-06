@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useEffect } from "react";
 import { api } from "~/trpc/react";
 import type { FilterConfig } from "~/types/filtering";
 import type { SortConfig } from "~/types/sorting";
@@ -69,6 +69,7 @@ export function useTableData({
 }: UseTableDataProps): UseTableDataReturn {
   const debouncedSearch = search?.trim() ?? "";
   const hasSearch = Boolean(debouncedSearch);
+  const utils = api.useUtils();
 
   // Use specialized hooks
   const { completeFilters, isFilterResult } = useTableFiltering({ filtering });
@@ -86,6 +87,14 @@ export function useTableData({
     [tableId, hasSearch, activeSorting, completeFilters, debouncedSearch],
   );
 
+  // 🚨 Cancel previous queries when tableId changes
+  useEffect(() => {
+    // Cancel any pending queries for the previous table when switching
+    return () => {
+      void utils.data.getInfiniteTableData.cancel();
+    };
+  }, [tableId, utils.data.getInfiniteTableData]);
+
   // Use tRPC's useInfiniteQuery for proper pagination
   const infiniteQuery = api.data.getInfiniteTableData.useInfiniteQuery(
     getQueryParams(),
@@ -95,6 +104,8 @@ export function useTableData({
       retry: (failureCount: number) => failureCount < 2,
       staleTime: 30000,
       refetchOnWindowFocus: false,
+      // 🚨 Add better error recovery
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
     },
   );
 
@@ -203,10 +214,23 @@ export function useTableData({
   // Error handling
   const error = useMemo(() => {
     if (infiniteQuery.error) {
+      console.error(`❌ Table data query error for table ${tableId}:`, {
+        error: infiniteQuery.error,
+        message: infiniteQuery.error.message,
+        params: getQueryParams(),
+        isPending: infiniteQuery.isPending,
+        isFetching: infiniteQuery.isFetching,
+      });
       return infiniteQuery.error.message;
     }
     return null;
-  }, [infiniteQuery.error]);
+  }, [
+    infiniteQuery.error,
+    tableId,
+    getQueryParams,
+    infiniteQuery.isPending,
+    infiniteQuery.isFetching,
+  ]);
 
   return {
     loading,

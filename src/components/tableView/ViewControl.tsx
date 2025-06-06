@@ -228,7 +228,7 @@ export default memo(function ViewControl({
             size="sm"
             className="h-8 gap-1.5 rounded px-2 text-sm font-normal text-gray-700 hover:bg-gray-100"
             onClick={handleAddManyRows}
-            disabled={!!loadingStatus || isAddingManyRows}
+            disabled={isAddingManyRows}
             title="Adds 100k rows to the table for testing"
           >
             <Database className="h-4 w-4" />

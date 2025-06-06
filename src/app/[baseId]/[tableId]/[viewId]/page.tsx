@@ -198,16 +198,21 @@ export default function TableViewPage({
 
   // Show error toast for table data errors (only once)
   if (error && !hookLoadingStatus) {
+    console.error("❌ Table data error:", error);
+    console.error("Table context:", { baseId, tableId, viewId });
     toast.error(`Failed to load table: ${error}`);
   }
 
   // Show error toast for base errors
   if (baseError) {
+    console.error("❌ Base error:", baseError);
     toast.error(`Failed to load base: ${baseError.message}`);
   }
 
   // Show error toast for view errors
   if (viewError) {
+    console.error("❌ View error:", viewError);
+    console.error("View context:", { baseId, tableId, viewId });
     toast.error(`Failed to load view: ${viewError}`);
   }
 

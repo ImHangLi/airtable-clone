@@ -65,10 +65,6 @@ export function useViewActions({
 
       return { previousViews, previousViewData };
     },
-    onSuccess: () => {
-      // No need to invalidate - optimistic update already handled the UI
-      toast.success("View renamed successfully");
-    },
     onError: (error, { viewId }, context) => {
       // Revert optimistic updates for both caches
       if (context?.previousViews) {
@@ -105,9 +101,6 @@ export function useViewActions({
       });
 
       return { previousViews };
-    },
-    onSuccess: () => {
-      toast.success("View deleted successfully");
     },
     onError: (error, _, context) => {
       // Revert optimistic update

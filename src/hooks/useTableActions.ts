@@ -54,9 +54,6 @@ export function useTableActions({
 
       return { previousTables };
     },
-    onSuccess: () => {
-      toast.success("Table renamed successfully");
-    },
     onError: (error, _, context) => {
       // Revert optimistic update
       if (context?.previousTables) {
@@ -86,9 +83,6 @@ export function useTableActions({
       });
 
       return { previousTables };
-    },
-    onSuccess: () => {
-      toast.success("Table deleted successfully");
     },
     onError: (error, _, context) => {
       // Revert optimistic update
