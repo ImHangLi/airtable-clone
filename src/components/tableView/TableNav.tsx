@@ -566,7 +566,7 @@ export default function TableNav({ baseId, currentTableId }: TableNavProps) {
                     }
                     className="h-8 w-16 bg-blue-600 text-[13px] font-normal text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {createTableMutation.isPending ? "Creating..." : "Create"}
+                    {"Create"}
                   </Button>
                 </div>
               </form>

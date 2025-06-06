@@ -69,7 +69,7 @@ export function CreateBaseButton() {
         disabled={isCreating}
         title="Click to create a base"
       >
-        {isCreating ? "Creating..." : "Create a base"}
+        {"Create a base"}
       </Button>
     </div>
   );

@@ -561,9 +561,7 @@ function ViewSide({ tableId, baseId, currentViewId }: ViewSideProps) {
                 onClick={handleCreateView}
                 disabled={!newViewName.trim() || createViewMutation.isPending}
               >
-                {createViewMutation.isPending
-                  ? "Creating..."
-                  : "Create new view"}
+                {"Create new view"}
               </Button>
             </div>
           </div>
