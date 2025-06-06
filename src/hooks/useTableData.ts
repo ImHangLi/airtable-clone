@@ -79,7 +79,7 @@ export function useTableData({
   const getQueryParams = useCallback(
     () => ({
       tableId,
-      limit: 150, // No longer reduce limit for search since we don't filter on backend
+      limit: 100,
       sorting: activeSorting,
       filtering: completeFilters,
       search: hasSearch ? debouncedSearch : undefined,

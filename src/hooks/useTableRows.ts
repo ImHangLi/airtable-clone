@@ -42,7 +42,7 @@ export function useTableRows({
 }: UseTableRowsProps): UseTableRowsReturn {
   const utils = api.useUtils();
 
-  // Row mutations
+  // Row mutations - OPTIMIZED for instant UI feedback
   const createRowMutation = api.row.createRow.useMutation({
     onMutate: async ({ rowId }) => {
       await utils.data.getInfiniteTableData.cancel(queryParams);
@@ -61,13 +61,22 @@ export function useTableRows({
 
         const newRow = { id: tempRowId, cells: emptyCells };
 
+        // PERFORMANCE: Add row to END of list for immediate visibility
         utils.data.getInfiniteTableData.setInfiniteData(
           queryParams,
           (oldData) => {
             if (!oldData) return oldData;
 
             const newPages = [...oldData.pages];
-            if (newPages[0]) {
+            // Add to the LAST page so user sees it immediately at bottom
+            const lastPageIndex = newPages.length - 1;
+            if (newPages[lastPageIndex]) {
+              newPages[lastPageIndex] = {
+                ...newPages[lastPageIndex],
+                items: [...newPages[lastPageIndex].items, newRow],
+              };
+            } else if (newPages[0]) {
+              // Fallback to first page if no last page
               newPages[0] = {
                 ...newPages[0],
                 items: [...newPages[0].items, newRow],
@@ -83,6 +92,10 @@ export function useTableRows({
       }
 
       return { previousData };
+    },
+    onSuccess: () => {
+      // SUCCESS: Row created successfully - no additional action needed thanks to optimistic update
+      console.log("Row created successfully");
     },
     onError: (error, _, context) => {
       // 🎯 Only revert optimistic update on error, trust retries will handle transient issues
@@ -106,13 +119,26 @@ export function useTableRows({
 
         if (previousData && tableInfo) {
           const tempRowId = crypto.randomUUID();
+
+          // PERFORMANCE: Instant optimistic update to last page for immediate visibility
           utils.data.getInfiniteTableData.setInfiniteData(
             queryParams,
             (oldData) => {
               if (!oldData) return oldData;
 
               const newPages = [...oldData.pages];
-              if (newPages[0]) {
+              // Add to the LAST page so user sees it immediately at bottom
+              const lastPageIndex = newPages.length - 1;
+              if (newPages[lastPageIndex]) {
+                newPages[lastPageIndex] = {
+                  ...newPages[lastPageIndex],
+                  items: [
+                    ...newPages[lastPageIndex].items,
+                    { id: tempRowId, cells: cellValues },
+                  ],
+                };
+              } else if (newPages[0]) {
+                // Fallback to first page if no last page
                 newPages[0] = {
                   ...newPages[0],
                   items: [
@@ -131,6 +157,10 @@ export function useTableRows({
         }
 
         return { previousData };
+      },
+      onSuccess: () => {
+        // SUCCESS: Row with cell values created successfully
+        console.log("Row with cell values created successfully");
       },
       onError: (error, _, context) => {
         // 🎯 Only revert optimistic update on error

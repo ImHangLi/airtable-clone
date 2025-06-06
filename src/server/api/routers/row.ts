@@ -30,7 +30,7 @@ export const addManyRowsSchema = z.object({
 });
 
 export const rowRouter = createTRPCRouter({
-  // Create a new row with empty string cells
+  // Create a new row with empty string cells - OPTIMIZED for speed
   createRow: protectedProcedure
     .input(createRowSchema)
     .mutation(async ({ ctx, input }): Promise<{ id: string }> => {
@@ -38,27 +38,35 @@ export const rowRouter = createTRPCRouter({
         // Use client-provided ID if available, otherwise generate one
         const newRowId = input.rowId ?? crypto.randomUUID();
 
-        await ctx.db.insert(rows).values({
-          id: newRowId,
-          table_id: input.tableId,
-          base_id: input.baseId,
+        // PERFORMANCE: Single transaction for row + cells creation
+        await ctx.db.transaction(async (tx) => {
+          // Get table columns first
+          const tableColumns = await tx
+            .select({ id: columns.id })
+            .from(columns)
+            .where(eq(columns.table_id, input.tableId))
+            .orderBy(asc(columns.position));
+
+          // Insert row
+          await tx.insert(rows).values({
+            id: newRowId,
+            table_id: input.tableId,
+            base_id: input.baseId,
+          });
+
+          // Batch insert all cells in the same transaction
+          if (tableColumns.length > 0) {
+            const cellsToInsert = tableColumns.map((column) => ({
+              row_id: newRowId,
+              column_id: column.id,
+              base_id: input.baseId,
+              value_text: null,
+              value_number: null,
+            }));
+
+            await tx.insert(cells).values(cellsToInsert);
+          }
         });
-
-        const tableColumns = await ctx.db
-          .select()
-          .from(columns)
-          .where(eq(columns.table_id, input.tableId))
-          .orderBy(asc(columns.position));
-
-        const cellsToInsert = tableColumns.map((column) => ({
-          row_id: newRowId,
-          column_id: column.id,
-          base_id: input.baseId,
-          value_text: null,
-          value_number: null,
-        }));
-
-        await ctx.db.insert(cells).values(cellsToInsert);
 
         return { id: newRowId };
       } catch (error) {
@@ -197,7 +205,7 @@ export const rowRouter = createTRPCRouter({
 
           const BATCH_SIZE = 500; // Smaller batches to reduce DB load
           const PARALLEL_BATCHES = 2; // Fewer parallel batches to avoid overwhelming DB
-          const SYNC_ROWS = 2000; // More rows for immediate feedback
+          const SYNC_ROWS = 500; // BLAZING FAST first batch for instant feedback
           const TOTAL_ROWS = 100000;
           const MAX_RETRIES = 3;
           const RETRY_DELAY_BASE = 1000; // Base delay for exponential backoff

@@ -216,7 +216,7 @@ export default function TableView({
     count: tableData.rows.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => CELL_CONFIG.height,
-    overscan: 20,
+    overscan: 50, // Increased from 20 for smoother scrolling
   });
 
   useSearchScrolling({
@@ -531,9 +531,9 @@ export default function TableView({
     (containerRefElement?: HTMLDivElement | null) => {
       if (containerRefElement) {
         const { scrollHeight, scrollTop, clientHeight } = containerRefElement;
-        // Optimized trigger distance - fetch when within 1000px of bottom
+        // Optimized trigger distance - fetch when within 2500px of bottom
         if (
-          scrollHeight - scrollTop - clientHeight < 1000 &&
+          scrollHeight - scrollTop - clientHeight < 2500 &&
           !tableData.isFetching &&
           !tableData.isFetchingNextPage &&
           tableData.hasNextPage
@@ -776,39 +776,6 @@ export default function TableView({
             isEditing ? 20 : 12,
             backgroundColor,
           )),
-      },
-    }),
-  };
-
-  const footerStyles = {
-    container: {
-      className: "sticky bottom-0 z-20 overflow-clip bg-white",
-      style: {
-        borderTop: `1px solid ${COLORS.border}`,
-        borderBottom: `1px solid ${COLORS.border}`,
-      },
-    },
-    recordCount: {
-      className:
-        "flex cursor-default items-center justify-center text-[11px] text-gray-600",
-      style: {
-        ...baseCellStyle,
-        width: CELL_CONFIG.rowNumberWidth * 2,
-        borderRight: `1px solid ${COLORS.border}`,
-        fontWeight: "500",
-        whiteSpace: "nowrap" as const,
-        overflow: "visible" as const,
-        ...createStickyStyle("row-number", 25, COLORS.footerBg),
-      },
-    },
-    cell: (isPrimary: boolean) => ({
-      className: "flex items-center",
-      style: {
-        ...baseCellStyle,
-        ...createCellWidthStyle(false),
-        ...(isPrimary
-          ? createStickyStyle("primary-column", 25, COLORS.footerBg)
-          : { backgroundColor: COLORS.white }),
       },
     }),
   };
@@ -1078,12 +1045,11 @@ export default function TableView({
         </div>
       </div>
 
-      {/* Draft Row - positioned above the sticky footer */}
+      {/* Draft Row - positioned at the bottom */}
       {isDraftRowVisible && (
         <div
-          className="sticky z-30 bg-white"
+          className="sticky bottom-0 z-30 bg-white"
           style={{
-            bottom: `${CELL_CONFIG.height}px`, // Position above the footer
             borderTop: `1px solid ${COLORS.border}`,
           }}
         >
@@ -1099,49 +1065,6 @@ export default function TableView({
           />
         </div>
       )}
-
-      {/* Sticky Footer Row - Record Count */}
-      <div {...footerStyles.container}>
-        <div className="flex">
-          {/* Record count in first cell */}
-          <div
-            {...footerStyles.recordCount}
-            title={`${tableData.totalDBRowCount.toLocaleString()} total records (${tableData.rows.length.toLocaleString()} loaded)`}
-          >
-            {tableData.totalDBRowCount.toLocaleString()} records
-          </div>
-
-          {/* Empty cells for each visible column to maintain table structure */}
-          {tableData.columns
-            .filter((column) => columnVisibility[column.id])
-            .map((column, index) => (
-              <div
-                key={`footer-${column.id}`}
-                {...footerStyles.cell(index === 0)}
-              />
-            ))}
-
-          {/* Add column space */}
-          <div
-            className="flex items-center"
-            style={{
-              ...baseCellStyle,
-              width: CELL_CONFIG.defaultWidth / 2,
-              backgroundColor: COLORS.white,
-            }}
-          />
-
-          {/* Extension area to fill remaining space */}
-          <div
-            className="flex-1"
-            style={{
-              ...baseCellStyle,
-              borderRight: "none",
-              backgroundColor: COLORS.white,
-            }}
-          />
-        </div>
-      </div>
 
       {/* Simple Context Menu */}
       {contextMenu.isOpen && contextMenu.rowId && (
