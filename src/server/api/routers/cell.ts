@@ -5,7 +5,7 @@ import { columns, cells, type ColumnType } from "~/server/db/schema";
 import { z } from "zod";
 
 // Cell-related schema and utility function
-export const updateCellSchema = z.object({
+export const cellValueSchema = z.object({
   rowId: z.string().uuid("Invalid row ID"),
   columnId: z.string().uuid("Invalid column ID"),
   value: z.union([z.string(), z.number()]),
@@ -18,13 +18,19 @@ export async function getCellValue(
 ) {
   if (columnType === "text") {
     return {
-      value_text: value === "" ? null : String(value),
+      value_text:
+        value === "" || value === null || value === undefined
+          ? null
+          : String(value),
       value_number: null,
     };
   } else if (columnType === "number") {
     return {
       value_text: null,
-      value_number: value === "" ? null : Number(value),
+      value_number:
+        value === "" || value === null || value === undefined
+          ? null
+          : Number(value),
     };
   }
 
@@ -34,7 +40,7 @@ export async function getCellValue(
 export const cellRouter = createTRPCRouter({
   // Update a cell value
   updateCell: protectedProcedure
-    .input(updateCellSchema)
+    .input(cellValueSchema)
     .mutation(async ({ ctx, input }): Promise<{ success: boolean }> => {
       try {
         const { rowId, columnId, value, baseId } = input;

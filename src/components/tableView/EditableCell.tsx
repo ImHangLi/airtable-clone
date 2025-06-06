@@ -23,7 +23,10 @@ interface EditableCellProps {
 
 export function EditableCell({ props, columnType }: EditableCellProps) {
   const { row, column, getValue, table } = props;
-  const initialValue = getValue() as string | number;
+  const rawValue = getValue() as string | number | undefined;
+
+  // Handle undefined values by defaulting to empty string
+  const initialValue = rawValue ?? "";
   const [value, setValue] = useState<string | number>(initialValue);
 
   // Get table meta with editing state handlers

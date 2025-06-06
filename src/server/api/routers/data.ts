@@ -366,11 +366,18 @@ export const dataRouter = createTRPCRouter({
             .where(inArray(cells.row_id, rowIds));
         }
 
-        // Build cells map efficiently
+        // Build cells map efficiently with default values for all columns
         const cellsByRowId = new Map<string, Record<string, string | number>>();
         rowIds.forEach((rowId) => {
-          cellsByRowId.set(rowId, {});
+          // Initialize with default values for all columns
+          const defaultCells: Record<string, string | number> = {};
+          tableColumns.forEach((column) => {
+            defaultCells[column.id] = ""; // Default empty string for all cell types
+          });
+          cellsByRowId.set(rowId, defaultCells);
         });
+
+        // Then populate with actual cell values
         allCells.forEach((cell) => {
           const existingCells = cellsByRowId.get(cell.row_id) ?? {};
           existingCells[cell.column_id] =

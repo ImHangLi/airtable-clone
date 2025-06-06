@@ -18,6 +18,9 @@ export interface UseTableRowsProps {
 
 export interface RowActions {
   addRow: () => Promise<string | null>;
+  addRowWithCellValues: (
+    cellValues: Record<string, string | number>,
+  ) => Promise<string | null>;
   updateCell: (
     rowId: string,
     columnId: string,
@@ -103,6 +106,60 @@ export function useTableRows({
       void invalidateAllTableQueries();
     },
   });
+
+  const createRowWithCellValuesMutation =
+    api.row.createRowWithCellValues.useMutation({
+      onMutate: async ({ cellValues }) => {
+        await utils.data.getInfiniteTableData.cancel(queryParams);
+
+        const previousData =
+          utils.data.getInfiniteTableData.getInfiniteData(queryParams);
+
+        if (previousData && tableInfo) {
+          const tempRowId = `temp-${Date.now()}`;
+          utils.data.getInfiniteTableData.setInfiniteData(
+            queryParams,
+            (oldData) => {
+              if (!oldData) return oldData;
+
+              const newPages = [...oldData.pages];
+              if (newPages[0]) {
+                newPages[0] = {
+                  ...newPages[0],
+                  items: [
+                    ...newPages[0].items,
+                    { id: tempRowId, cells: cellValues },
+                  ],
+                };
+              }
+
+              return {
+                ...oldData,
+                pages: newPages,
+              };
+            },
+          );
+        }
+
+        return { previousData };
+      },
+
+      onSuccess: async () => {
+        // Invalidate all queries for this table to sync across views
+        await invalidateAllTableQueries();
+      },
+
+      onError: (error, _, context) => {
+        if (context?.previousData) {
+          utils.data.getInfiniteTableData.setInfiniteData(
+            queryParams,
+            context.previousData,
+          );
+        }
+        toast.error(`Failed to create row with cell values: ${error.message}`);
+        void invalidateAllTableQueries();
+      },
+    });
 
   const updateCellMutation = api.cell.updateCell.useMutation({
     onMutate: async ({ rowId, columnId, value }) => {
@@ -211,6 +268,21 @@ export function useTableRows({
         }
       },
 
+      addRowWithCellValues: async (
+        cellValues: Record<string, string | number>,
+      ): Promise<string | null> => {
+        try {
+          const result = await createRowWithCellValuesMutation.mutateAsync({
+            tableId,
+            cellValues: { ...cellValues, baseId },
+          });
+          return result.id;
+        } catch (error) {
+          console.error("Failed to add row with cell values:", error);
+          return null;
+        }
+      },
+
       updateCell: async (
         rowId: string,
         columnId: string,
@@ -240,7 +312,14 @@ export function useTableRows({
         }
       },
     }),
-    [createRowMutation, updateCellMutation, deleteRowMutation, tableId, baseId],
+    [
+      createRowMutation,
+      tableId,
+      baseId,
+      createRowWithCellValuesMutation,
+      updateCellMutation,
+      deleteRowMutation,
+    ],
   );
 
   // Calculate loading state for row operations

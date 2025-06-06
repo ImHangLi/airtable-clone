@@ -51,7 +51,7 @@ export function DraftRow({
         setFocusedCell(firstVisibleColumn.id);
         firstInputRef.current?.focus();
       }
-    }, 100);
+    }, 50);
     return () => clearTimeout(timer);
   }, [columns, columnVisibility, setFocusedCell]);
 
@@ -67,7 +67,7 @@ export function DraftRow({
     // Use setTimeout to ensure the event listener is added after the component is fully rendered
     const timer = setTimeout(() => {
       document.addEventListener("mousedown", handleClickOutside);
-    }, 100);
+    }, 50);
 
     return () => {
       clearTimeout(timer);
@@ -115,7 +115,7 @@ export function DraftRow({
       onKeyDown={handleKeyDown}
     >
       <div className="flex">
-        {/* Row number column - styled exactly like regular rows */}
+        {/* Row number column */}
         <div
           className="relative flex items-center justify-center"
           data-sticky="draft-row-number"
@@ -126,12 +126,12 @@ export function DraftRow({
             position: "sticky",
             left: 0,
             zIndex: 35,
-            backgroundColor: "#f3f4f6",
+            backgroundColor: "white",
             borderBottom: "1px solid #dee1e3",
           }}
         ></div>
 
-        {/* Input cells for each visible column - styled exactly like regular cells */}
+        {/* Input cells for each visible column */}
         {visibleColumns.map((column, index) => {
           const isFocused = focusedCell === column.id;
 

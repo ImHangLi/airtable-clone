@@ -5,11 +5,19 @@ import { columns, rows, cells } from "~/server/db/schema";
 import { randomUUID } from "crypto";
 import { faker } from "@faker-js/faker";
 import { z } from "zod";
+import { getCellValue } from "./cell";
 
 // Row-related schemas
 export const createRowSchema = z.object({
   tableId: z.string().uuid("Invalid table ID"),
   baseId: z.string().uuid("Invalid base ID"),
+});
+
+export const createRowWithCellValuesSchema = z.object({
+  tableId: z.string().uuid("Invalid table ID"),
+  cellValues: z
+    .record(z.string(), z.union([z.string(), z.number()]))
+    .and(z.object({ baseId: z.string().uuid("Invalid base ID") })),
 });
 
 export const deleteRowSchema = z.object({
@@ -57,6 +65,85 @@ export const rowRouter = createTRPCRouter({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to create row",
+        });
+      }
+    }),
+
+  // Create row with cell values
+  createRowWithCellValues: protectedProcedure
+    .input(createRowWithCellValuesSchema)
+    .mutation(async ({ ctx, input }): Promise<{ id: string }> => {
+      try {
+        const { tableId, cellValues } = input;
+        const baseId = cellValues.baseId;
+
+        // Get all column types in a single query
+        const columnTypes = await ctx.db
+          .select({ id: columns.id, type: columns.type })
+          .from(columns)
+          .where(eq(columns.table_id, tableId));
+
+        // Create a map of column IDs to their types for O(1) lookup
+        const columnTypeMap = new Map(
+          columnTypes.map((col) => [col.id, col.type]),
+        );
+
+        let newRowId: string;
+
+        // Insert row and cells in a transaction for atomicity
+        await ctx.db.transaction(async (tx) => {
+          // Insert the row
+          newRowId = randomUUID();
+          await tx.insert(rows).values({
+            id: newRowId,
+            table_id: tableId,
+            base_id: baseId,
+          });
+
+          // Batch insert all cells at once
+          const formattedCellValues = await Promise.all(
+            Object.entries(cellValues).map(async ([columnId, value]) => {
+              if (columnId === "baseId") return null; // Skip baseId from cellValues
+
+              const columnType = columnTypeMap.get(columnId);
+              if (!columnType) {
+                throw new TRPCError({
+                  code: "NOT_FOUND",
+                  message: `Column ${columnId} not found`,
+                });
+              }
+
+              const { value_text, value_number } = await getCellValue(
+                columnType,
+                value,
+              );
+
+              return {
+                row_id: newRowId,
+                column_id: columnId,
+                base_id: baseId,
+                value_text,
+                value_number,
+              };
+            }),
+          );
+
+          // Filter out null values (from baseId)
+          const validCellValues = formattedCellValues.filter(
+            (cell): cell is NonNullable<typeof cell> => cell !== null,
+          );
+
+          if (validCellValues.length > 0) {
+            await tx.insert(cells).values(validCellValues);
+          }
+        });
+
+        return { id: newRowId! }; // Return the new row ID
+      } catch (error) {
+        console.error("Error creating row with cell values:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create row with cell values",
         });
       }
     }),

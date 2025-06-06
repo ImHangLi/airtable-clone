@@ -2,15 +2,11 @@ import { Plus, WandSparkles } from "lucide-react";
 
 interface FloatingAddRowButtonProps {
   onClick: () => void;
-  isVisible: boolean;
 }
 
 export function FloatingAddRowButton({
   onClick,
-  isVisible,
 }: FloatingAddRowButtonProps) {
-  if (!isVisible) return null;
-
   return (
     <div
       className="absolute bottom-7 left-4 z-40 flex h-8 w-35 items-center justify-center gap-2 rounded-full border border-gray-300 bg-white text-gray-700 transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none"

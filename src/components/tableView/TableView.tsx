@@ -454,19 +454,18 @@ export default function TableView({
       setSavingStatus("Creating row...");
 
       try {
-        const newRowId = await tableActions.addRow();
+        // Filter out empty values before sending to the server
+        const filteredData = Object.fromEntries(
+          Object.entries(draftData).filter(
+            ([, value]) =>
+              value !== "" && value !== null && value !== undefined,
+          ),
+        );
+
+        // Use the more efficient single-operation method
+        const newRowId = await tableActions.addRowWithCellValues(filteredData);
 
         if (newRowId) {
-          const updatePromises = Object.entries(draftData).map(
-            ([columnId, value]) => {
-              if (value !== "" && value !== null && value !== undefined) {
-                return tableActions.updateCell(newRowId, columnId, value);
-              }
-              return Promise.resolve(true);
-            },
-          );
-
-          await Promise.all(updatePromises);
           setNewlyAddedRowId(newRowId);
 
           setTimeout(() => {
@@ -1028,14 +1027,7 @@ export default function TableView({
         )}
 
       {/* Floating Add Row Button */}
-      <FloatingAddRowButton
-        onClick={handleFloatingAddRow}
-        isVisible={
-          !isDraftRowVisible &&
-          !tableData.isFetching &&
-          !tableData.isFetchingNextPage
-        }
-      />
+      <FloatingAddRowButton onClick={handleFloatingAddRow} />
     </div>
   );
 }
