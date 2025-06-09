@@ -12,56 +12,6 @@ export const cellValueSchema = z.object({
   baseId: z.string().uuid("Invalid base ID"),
 });
 
-// Simplified retry configuration for database operations
-const RETRY_CONFIG = {
-  maxAttempts: 20,
-  delay: 1000,
-  maxDelay: 10000, // Cap at 10 seconds
-  backoffMultiplier: 2, // Double the delay each retry
-};
-
-// Proper exponential backoff with jitter
-async function exponentialBackoff(attempt: number): Promise<void> {
-  const baseDelay =
-    RETRY_CONFIG.delay * Math.pow(RETRY_CONFIG.backoffMultiplier, attempt);
-  const cappedDelay = Math.min(baseDelay, RETRY_CONFIG.maxDelay);
-
-  // Add jitter (up to 20% randomness) to prevent thundering herd
-  const jitter = Math.random() * 0.2 * cappedDelay;
-  const finalDelay = cappedDelay + jitter;
-
-  console.log(
-    `Retrying in ${Math.round(finalDelay)}ms (attempt ${attempt + 1}/${RETRY_CONFIG.maxAttempts})`,
-  );
-
-  return new Promise((resolve) => setTimeout(resolve, finalDelay));
-}
-
-// Treat all errors as retryable for maximum resilience
-function isRetryableError(error: unknown): boolean {
-  // Only skip retries for explicit client errors that won't change
-  if (error instanceof TRPCError) {
-    // Don't retry on authentication/authorization errors
-    if (error.code === "UNAUTHORIZED" || error.code === "FORBIDDEN") {
-      console.log("Authentication/authorization error - not retrying");
-      return false;
-    }
-
-    // Don't retry on bad input validation errors
-    if (error.code === "BAD_REQUEST" && error.message.includes("Invalid")) {
-      console.log("Input validation error - not retrying");
-      return false;
-    }
-  }
-
-  // For all other errors (database, network, timing issues), retry
-  console.log(
-    "Error detected - will retry:",
-    error instanceof Error ? error.message : "Unknown error",
-  );
-  return true;
-}
-
 export async function getCellValue(
   columnType: ColumnType,
   value: string | number,
@@ -88,7 +38,7 @@ export async function getCellValue(
 }
 
 export const cellRouter = createTRPCRouter({
-  // Update a cell value with simplified retry logic
+  // Update a cell value with retry logic
   updateCell: protectedProcedure
     .input(cellValueSchema)
     .mutation(
@@ -97,13 +47,14 @@ export const cellRouter = createTRPCRouter({
         input,
       }): Promise<{ success: boolean; attempts: number }> => {
         const { rowId, columnId, value, baseId } = input;
-        let lastError: unknown;
+        const MAX_RETRIES = 5;
+        const INITIAL_DELAY = 1000;
+        let retryCount = 0;
 
-        // Simple retry loop for database race conditions
-        for (let attempt = 0; attempt < RETRY_CONFIG.maxAttempts; attempt++) {
+        while (retryCount < MAX_RETRIES) {
           try {
             console.log(
-              `Cell update attempt ${attempt + 1} for column ${columnId}`,
+              `Cell update attempt ${retryCount + 1} for column ${columnId}`,
             );
 
             // Get column type to determine where to store the value
@@ -114,14 +65,24 @@ export const cellRouter = createTRPCRouter({
               .limit(1);
 
             if (!columnInfo) {
-              // For newly created columns, this might be a race condition
-              // So we make it retryable
-              console.log(
-                `Column ${columnId} not found on attempt ${attempt + 1}`,
-              );
+              const error = `Column ${columnId} not found`;
+              console.log(error);
+
+              // Check if we should retry for Column not found
+              if (retryCount < MAX_RETRIES - 1) {
+                retryCount++;
+                await new Promise((resolve) =>
+                  setTimeout(
+                    resolve,
+                    INITIAL_DELAY * Math.pow(2, retryCount - 1),
+                  ),
+                );
+                continue;
+              }
+
               throw new TRPCError({
                 code: "NOT_FOUND",
-                message: `Column ${columnId} not found`,
+                message: error,
               });
             }
 
@@ -149,46 +110,45 @@ export const cellRouter = createTRPCRouter({
               });
 
             // Success! Return with the number of attempts it took
-            console.log(`Cell update succeeded on attempt ${attempt + 1}`);
-            return { success: true, attempts: attempt + 1 };
+            console.log(`Cell update succeeded on attempt ${retryCount + 1}`);
+            return { success: true, attempts: retryCount + 1 };
           } catch (error) {
-            console.error(`Cell update attempt ${attempt + 1} failed:`, error);
-            lastError = error;
+            console.error(
+              `Cell update attempt ${retryCount + 1} failed:`,
+              error,
+            );
 
-            // If it's not a retryable error, fail immediately
-            if (!isRetryableError(error)) {
-              console.log("Error is not retryable, failing immediately");
-              break;
+            // Don't retry on authentication/authorization errors
+            if (
+              error instanceof TRPCError &&
+              (error.code === "UNAUTHORIZED" || error.code === "FORBIDDEN")
+            ) {
+              throw error;
             }
 
-            // If this was our last attempt, don't wait
-            if (attempt === RETRY_CONFIG.maxAttempts - 1) {
-              console.log("Max attempts reached, giving up");
-              break;
+            // Check if this is the last attempt
+            if (retryCount === MAX_RETRIES - 1) {
+              if (error instanceof TRPCError) {
+                throw error;
+              }
+              throw new TRPCError({
+                code: "INTERNAL_SERVER_ERROR",
+                message: `Failed to update cell after ${MAX_RETRIES} attempts. Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+              });
             }
 
-            // Simple delay before retrying
-            console.log(`Waiting ${RETRY_CONFIG.delay}ms before retry...`);
-            await exponentialBackoff(attempt);
+            // Retry with exponential backoff
+            retryCount++;
+            await new Promise((resolve) =>
+              setTimeout(resolve, INITIAL_DELAY * Math.pow(2, retryCount - 1)),
+            );
           }
         }
 
-        // All retries failed, throw the last error with more context
-        console.error("All retry attempts failed for cell update", {
-          rowId,
-          columnId,
-          value,
-          baseId,
-          lastError,
-        });
-
-        if (lastError instanceof TRPCError) {
-          throw lastError;
-        }
-
+        // This should never be reached, but just in case
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to update cell after ${RETRY_CONFIG.maxAttempts} attempts. Last error: ${lastError instanceof Error ? lastError.message : "Unknown error"}`,
+          message: "Max retries exceeded",
         });
       },
     ),

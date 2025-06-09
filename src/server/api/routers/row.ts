@@ -10,7 +10,7 @@ import { getCellValue } from "./cell";
 export const createRowSchema = z.object({
   tableId: z.string().uuid("Invalid table ID"),
   baseId: z.string().uuid("Invalid base ID"),
-  rowId: z.string().uuid("Invalid row ID").optional(),
+  rowId: z.string().uuid("Invalid row ID"),
 });
 
 export const createRowWithCellValuesSchema = z.object({
@@ -18,6 +18,7 @@ export const createRowWithCellValuesSchema = z.object({
   cellValues: z
     .record(z.string(), z.union([z.string(), z.number()]))
     .and(z.object({ baseId: z.string().uuid("Invalid base ID") })),
+  rowId: z.string().uuid("Invalid row ID"),
 });
 
 export const deleteRowSchema = z.object({
@@ -35,8 +36,7 @@ export const rowRouter = createTRPCRouter({
     .input(createRowSchema)
     .mutation(async ({ ctx, input }): Promise<{ id: string }> => {
       try {
-        // Use client-provided ID if available, otherwise generate one
-        const newRowId = input.rowId ?? crypto.randomUUID();
+        const { tableId, baseId, rowId } = input;
 
         // PERFORMANCE: Single transaction for row + cells creation
         await ctx.db.transaction(async (tx) => {
@@ -49,17 +49,17 @@ export const rowRouter = createTRPCRouter({
 
           // Insert row
           await tx.insert(rows).values({
-            id: newRowId,
-            table_id: input.tableId,
-            base_id: input.baseId,
+            id: rowId,
+            table_id: tableId,
+            base_id: baseId,
           });
 
           // Batch insert all cells in the same transaction
           if (tableColumns.length > 0) {
             const cellsToInsert = tableColumns.map((column) => ({
-              row_id: newRowId,
+              row_id: rowId,
               column_id: column.id,
-              base_id: input.baseId,
+              base_id: baseId,
               value_text: null,
               value_number: null,
             }));
@@ -68,7 +68,7 @@ export const rowRouter = createTRPCRouter({
           }
         });
 
-        return { id: newRowId };
+        return { id: rowId };
       } catch (error) {
         console.error("Error creating row:", error);
         throw new TRPCError({
@@ -83,7 +83,7 @@ export const rowRouter = createTRPCRouter({
     .input(createRowWithCellValuesSchema)
     .mutation(async ({ ctx, input }): Promise<{ id: string }> => {
       try {
-        const { tableId, cellValues } = input;
+        const { tableId, cellValues, rowId } = input;
         const baseId = cellValues.baseId;
 
         // Get all column types in a single query
@@ -97,14 +97,11 @@ export const rowRouter = createTRPCRouter({
           columnTypes.map((col) => [col.id, col.type]),
         );
 
-        let newRowId: string;
-
         // Insert row and cells in a transaction for atomicity
         await ctx.db.transaction(async (tx) => {
           // Insert the row
-          newRowId = crypto.randomUUID();
           await tx.insert(rows).values({
-            id: newRowId,
+            id: rowId,
             table_id: tableId,
             base_id: baseId,
           });
@@ -128,7 +125,7 @@ export const rowRouter = createTRPCRouter({
               );
 
               return {
-                row_id: newRowId,
+                row_id: rowId,
                 column_id: columnId,
                 base_id: baseId,
                 value_text,
@@ -147,7 +144,7 @@ export const rowRouter = createTRPCRouter({
           }
         });
 
-        return { id: newRowId! }; // Return the new row ID
+        return { id: rowId };
       } catch (error) {
         console.error("Error creating row with cell values:", error);
         throw new TRPCError({

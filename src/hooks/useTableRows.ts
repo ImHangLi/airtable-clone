@@ -111,15 +111,13 @@ export function useTableRows({
 
   const createRowWithCellValuesMutation =
     api.row.createRowWithCellValues.useMutation({
-      onMutate: async ({ cellValues }) => {
+      onMutate: async ({ cellValues, rowId }) => {
         await utils.data.getInfiniteTableData.cancel(queryParams);
 
         const previousData =
           utils.data.getInfiniteTableData.getInfiniteData(queryParams);
 
         if (previousData && tableInfo) {
-          const tempRowId = crypto.randomUUID();
-
           // PERFORMANCE: Instant optimistic update to last page for immediate visibility
           utils.data.getInfiniteTableData.setInfiniteData(
             queryParams,
@@ -134,7 +132,7 @@ export function useTableRows({
                   ...newPages[lastPageIndex],
                   items: [
                     ...newPages[lastPageIndex].items,
-                    { id: tempRowId, cells: cellValues },
+                    { id: rowId, cells: cellValues },
                   ],
                 };
               } else if (newPages[0]) {
@@ -143,7 +141,7 @@ export function useTableRows({
                   ...newPages[0],
                   items: [
                     ...newPages[0].items,
-                    { id: tempRowId, cells: cellValues },
+                    { id: rowId, cells: cellValues },
                   ],
                 };
               }
@@ -279,13 +277,12 @@ export function useTableRows({
     (): RowActions => ({
       addRow: async (): Promise<string | null> => {
         try {
-          // Generate ID on client for immediate use
-          const tempRowId = crypto.randomUUID();
+          const rowId = crypto.randomUUID();
 
           const result = await createRowMutation.mutateAsync({
             tableId,
             baseId,
-            rowId: tempRowId, // 🎯 Pass the client-generated ID to server
+            rowId,
           });
           return result.id;
         } catch (error) {
@@ -298,9 +295,11 @@ export function useTableRows({
         cellValues: Record<string, string | number>,
       ): Promise<string | null> => {
         try {
-          // 🎯 Simplified! No more pending column checks - server handles retries
+          const rowId = crypto.randomUUID();
+
           const result = await createRowWithCellValuesMutation.mutateAsync({
             tableId,
+            rowId,
             cellValues: { ...cellValues, baseId },
           });
           return result.id;

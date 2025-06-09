@@ -1003,7 +1003,7 @@ export default function TableView({
                     .map((column, index) => (
                       <div
                         key={column.id}
-                        className="relative flex items-center bg-white"
+                        className="relative flex items-center"
                         {...(index === 0 && {
                           "data-sticky": "add-primary-column",
                         })}
@@ -1011,6 +1011,9 @@ export default function TableView({
                           ...baseCellStyle,
                           ...createCellWidthStyle(false),
                           borderRight: `1px solid ${COLORS.border}`,
+                          backgroundColor: isAddRowHovered
+                            ? COLORS.hover
+                            : COLORS.white,
                           ...(index === 0 &&
                             createStickyStyle(
                               "primary-column",

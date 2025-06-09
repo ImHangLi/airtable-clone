@@ -24,7 +24,7 @@ export const addColumnSchema = z.object({
   tableId: z.string().uuid("Invalid table ID"),
   name: z.string().min(1, "Column name is required"),
   type: z.enum(["text", "number"]),
-  columnId: z.string().uuid("Invalid column ID").optional(),
+  columnId: z.string().uuid("Invalid column ID"),
 });
 
 export const columnRouter = createTRPCRouter({
@@ -100,82 +100,96 @@ export const columnRouter = createTRPCRouter({
       try {
         const { tableId, name, type, columnId } = input;
 
-        // Get the table to find base_id
-        const [table] = await ctx.db
-          .select({ base_id: tables.base_id })
-          .from(tables)
-          .where(eq(tables.id, tableId));
+        // Use a transaction to ensure data consistency
+        const result = await ctx.db.transaction(async (tx) => {
+          // Get the table to find base_id
+          const [table] = await tx
+            .select({ base_id: tables.base_id })
+            .from(tables)
+            .where(eq(tables.id, tableId));
 
-        if (!table) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Table not found",
+          if (!table) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Table not found",
+            });
+          }
+
+          // Get the current max position for columns in this table
+          const maxPositionResult = await tx
+            .select({ maxPosition: columns.position })
+            .from(columns)
+            .where(eq(columns.table_id, tableId))
+            .orderBy(desc(columns.position))
+            .limit(1);
+
+          const nextPosition = (maxPositionResult[0]?.maxPosition ?? -1) + 1;
+
+          // Use client-provided ID
+          const newColumnId = columnId;
+
+          // Create the column
+          await tx.insert(columns).values({
+            id: newColumnId,
+            base_id: table.base_id,
+            table_id: tableId,
+            name,
+            type: type,
+            position: nextPosition,
+            sort: "asc" as SortDirection,
           });
-        }
 
-        // Get the current max position for columns in this table
-        const maxPositionResult = await ctx.db
-          .select({ maxPosition: columns.position })
-          .from(columns)
-          .where(eq(columns.table_id, tableId))
-          .orderBy(desc(columns.position))
-          .limit(1);
+          // Get all existing rows for this table
+          const existingRows = await tx
+            .select({ id: rows.id })
+            .from(rows)
+            .where(eq(rows.table_id, tableId));
 
-        const nextPosition = (maxPositionResult[0]?.maxPosition ?? -1) + 1;
-
-        // Use client-provided ID if available, otherwise generate one
-        const newColumnId = columnId ?? crypto.randomUUID();
-        await ctx.db.insert(columns).values({
-          id: newColumnId,
-          base_id: table.base_id,
-          table_id: tableId,
-          name,
-          type: type,
-          position: nextPosition,
-          sort: "asc" as SortDirection,
-        });
-
-        // Get all existing rows for this table
-        const existingRows = await ctx.db
-          .select({ id: rows.id })
-          .from(rows)
-          .where(eq(rows.table_id, tableId));
-
-        // Create empty cells for all existing rows in the new column - ALL SYNCHRONOUSLY
-        if (existingRows.length > 0) {
-          const BATCH_SIZE = 1000; // Process in smaller batches for memory efficiency
-          const totalRows = existingRows.length;
-
-          // Process ALL rows synchronously to prevent race conditions
-          console.log(
-            `Creating cells for ${totalRows} existing rows in new column ${newColumnId}`,
-          );
-
-          for (let i = 0; i < totalRows; i += BATCH_SIZE) {
-            const batchEnd = Math.min(i + BATCH_SIZE, totalRows);
-            const batch = existingRows.slice(i, batchEnd);
-
-            const cellsToInsert = batch.map((row) => ({
-              row_id: row.id,
-              column_id: newColumnId,
-              base_id: table.base_id,
-              value_text: null,
-              value_number: null,
-            }));
-
-            await ctx.db.insert(cells).values(cellsToInsert);
+          // Create empty cells for all existing rows using efficient batching
+          if (existingRows.length > 0) {
+            const BATCH_SIZE = 5000; // Optimal for large datasets
+            const totalRows = existingRows.length;
 
             console.log(
-              `Processed batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(totalRows / BATCH_SIZE)} for column ${newColumnId}`,
+              `Creating ${totalRows} cells for new column ${newColumnId}`,
+            );
+
+            // Process in batches to handle large datasets efficiently
+            for (let i = 0; i < totalRows; i += BATCH_SIZE) {
+              const batch = existingRows.slice(i, i + BATCH_SIZE);
+
+              const cellsToInsert = batch.map((row) => ({
+                row_id: row.id,
+                column_id: newColumnId,
+                base_id: table.base_id,
+                value_text: null,
+                value_number: null,
+              }));
+
+              await tx.insert(cells).values(cellsToInsert);
+
+              // Log progress for large operations
+              if (totalRows > 10000 && (i + BATCH_SIZE) % 20000 === 0) {
+                console.log(
+                  `Progress: ${i + BATCH_SIZE}/${totalRows} cells created`,
+                );
+              }
+            }
+
+            console.log(
+              `Successfully created all ${totalRows} cells for column ${newColumnId}`,
             );
           }
 
-          console.log(`Completed creating all cells for column ${newColumnId}`);
-        }
+          return newColumnId;
+        });
 
-        return { id: newColumnId };
+        return { id: result };
       } catch (error) {
         console.error("Error adding column:", error);
+        if (error instanceof TRPCError) {
+          throw error;
+        }
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to add column",
