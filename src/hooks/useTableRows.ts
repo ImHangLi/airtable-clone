@@ -111,63 +111,11 @@ export function useTableRows({
 
   const createRowWithCellValuesMutation =
     api.row.createRowWithCellValues.useMutation({
-      onMutate: async ({ cellValues, rowId }) => {
-        await utils.data.getInfiniteTableData.cancel(queryParams);
-
-        const previousData =
-          utils.data.getInfiniteTableData.getInfiniteData(queryParams);
-
-        if (previousData && tableInfo) {
-          // PERFORMANCE: Instant optimistic update to last page for immediate visibility
-          utils.data.getInfiniteTableData.setInfiniteData(
-            queryParams,
-            (oldData) => {
-              if (!oldData) return oldData;
-
-              const newPages = [...oldData.pages];
-              // Add to the LAST page so user sees it immediately at bottom
-              const lastPageIndex = newPages.length - 1;
-              if (newPages[lastPageIndex]) {
-                newPages[lastPageIndex] = {
-                  ...newPages[lastPageIndex],
-                  items: [
-                    ...newPages[lastPageIndex].items,
-                    { id: rowId, cells: cellValues },
-                  ],
-                };
-              } else if (newPages[0]) {
-                // Fallback to first page if no last page
-                newPages[0] = {
-                  ...newPages[0],
-                  items: [
-                    ...newPages[0].items,
-                    { id: rowId, cells: cellValues },
-                  ],
-                };
-              }
-
-              return {
-                ...oldData,
-                pages: newPages,
-              };
-            },
-          );
-        }
-
-        return { previousData };
-      },
-      onSuccess: () => {
-        // SUCCESS: Row with cell values created successfully
+      onSuccess: async () => {
+        await utils.data.getInfiniteTableData.invalidate(queryParams);
         console.log("Row with cell values created successfully");
       },
-      onError: (error, _, context) => {
-        // 🎯 Only revert optimistic update on error
-        if (context?.previousData) {
-          utils.data.getInfiniteTableData.setInfiniteData(
-            queryParams,
-            context.previousData,
-          );
-        }
+      onError: (error) => {
         toast.error(`Failed to create row with cell values: ${error.message}`);
       },
     });
