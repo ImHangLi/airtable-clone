@@ -24,6 +24,7 @@ import type { SearchNavigationState } from "~/hooks/useTableSearch";
 import { useViewData } from "~/hooks/useViewData";
 import { useViewActions } from "~/hooks/useViewActions";
 import { ViewContextMenu } from "./ViewContextMenu";
+import { useSearchStats } from "~/hooks/useSearchStats";
 
 interface ViewControlProps {
   tableId: string;
@@ -31,6 +32,7 @@ interface ViewControlProps {
   currentViewId: string;
   tableData?: TableData;
   loadingStatus?: string | null;
+  searchQuery?: string;
   setSearchQuery: (query: string) => void;
   sorting: SortConfig[];
   onSortingChange: (sorting: SortConfig[]) => void;
@@ -54,6 +56,7 @@ export default memo(function ViewControl({
   currentViewId,
   tableData,
   loadingStatus = null,
+  searchQuery,
   setSearchQuery,
   sorting,
   onSortingChange,
@@ -72,6 +75,12 @@ export default memo(function ViewControl({
 }: ViewControlProps) {
   const [isAddingManyRows, setIsAddingManyRows] = useState(false);
   const utils = api.useUtils();
+
+  // Use the optimized search stats hook
+  const { searchStats } = useSearchStats({
+    tableId,
+    search: searchQuery,
+  });
 
   // Use the view data hook for current view info
   const { viewData: currentView } = useViewData({
@@ -286,6 +295,7 @@ export default memo(function ViewControl({
           onChange={setSearchQuery}
           disabled={!!loadingStatus}
           backendSearchMatches={tableData?.searchMatches ?? []}
+          searchStats={searchStats ?? undefined}
           onSearchMatches={onSearchMatches}
           onInvalidateTableData={onInvalidateTableData}
         />

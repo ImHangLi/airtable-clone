@@ -607,7 +607,7 @@ export default function TableView({
 
           setTimeout(() => {
             if (parentRef.current) {
-              const rowIndex = tableData.rows.length;
+              const rowIndex = tableData.totalDBRowCount - 1;
               const scrollTop = rowIndex * CELL_CONFIG.height;
               parentRef.current.scrollTo({
                 top: scrollTop,
@@ -629,7 +629,7 @@ export default function TableView({
         setSavingStatus(null);
       }
     },
-    [tableActions, tableData.rows.length],
+    [tableActions, tableData.totalDBRowCount],
   );
 
   const handleDraftRowCancel = useCallback(() => {

@@ -272,6 +272,7 @@ export default function TableViewPage({
         baseId={baseId}
         currentViewId={viewId}
         tableData={tableData ?? undefined}
+        searchQuery={searchQuery}
         setSearchQuery={handleSearchQueryChange}
         sorting={sorting}
         loadingStatus={currentLoadingStatus}

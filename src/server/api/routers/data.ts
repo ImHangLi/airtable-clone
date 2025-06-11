@@ -36,7 +36,66 @@ const unifiedTableDataSchema = z.object({
   search: z.string().max(100).optional(),
 });
 
+const searchStatsSchema = z.object({
+  tableId: z.string().uuid("Invalid table ID"),
+  search: z.string().min(1).max(100),
+});
+
 export const dataRouter = createTRPCRouter({
+  getSearchStats: protectedProcedure
+    .input(searchStatsSchema)
+    .query(async ({ ctx, input }) => {
+      try {
+        const { tableId, search } = input;
+        const searchTerm = search.trim();
+
+        if (!searchTerm) {
+          return {
+            totalMatches: 0,
+            uniqueRows: 0,
+            uniqueFields: 0,
+          };
+        }
+
+        // Optimized query using SQL aggregation - searches entire base
+        const statsResult = await ctx.db
+          .select({
+            totalMatches: sql<number>`COUNT(*)`,
+            uniqueRows: sql<number>`COUNT(DISTINCT ${cells.row_id})`,
+            uniqueFields: sql<number>`COUNT(DISTINCT ${cells.column_id})`,
+          })
+          .from(cells)
+          .innerJoin(rows, eq(cells.row_id, rows.id))
+          .innerJoin(tables, eq(rows.table_id, tables.id))
+          .where(
+            and(
+              eq(tables.id, tableId), // Search across entire base
+              sql`(
+                (${cells.value_text} ILIKE ${`%${searchTerm}%`} AND ${cells.value_text} IS NOT NULL AND ${cells.value_text} != '') OR
+                (CAST(${cells.value_number} AS TEXT) ILIKE ${`%${searchTerm}%`} AND ${cells.value_number} IS NOT NULL)
+              )`,
+            ),
+          );
+
+        const stats = statsResult[0];
+
+        return {
+          totalMatches: Number(stats?.totalMatches ?? 0),
+          uniqueRows: Number(stats?.uniqueRows ?? 0),
+          uniqueFields: Number(stats?.uniqueFields ?? 0),
+        };
+      } catch (error) {
+        console.error("Error getting search stats:", error);
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to get search statistics",
+        });
+      }
+    }),
+
   getInfiniteTableData: protectedProcedure
     .input(unifiedTableDataSchema)
     .query(async ({ ctx, input }) => {

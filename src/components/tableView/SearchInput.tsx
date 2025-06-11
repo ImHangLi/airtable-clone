@@ -8,12 +8,16 @@ import {
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
 import type { SearchNavigationState } from "~/hooks/useTableSearch";
-import type { SearchMatch as BackendSearchMatch } from "~/hooks/useTableData";
+import type {
+  SearchMatch as BackendSearchMatch,
+  SearchStats,
+} from "~/hooks/useTableData";
 
 interface SearchInputProps {
   onChange: (value: string) => void;
   disabled?: boolean;
   backendSearchMatches?: BackendSearchMatch[];
+  searchStats?: SearchStats;
   onSearchMatches?: (navigationState: SearchNavigationState) => void;
   onInvalidateTableData?: () => void;
 }
@@ -22,6 +26,7 @@ export function SearchInput({
   onChange,
   disabled = false,
   backendSearchMatches = [],
+  searchStats,
   onSearchMatches,
   onInvalidateTableData,
 }: SearchInputProps) {
@@ -141,26 +146,20 @@ export function SearchInput({
     inputRef.current?.focus();
   };
 
-  // Calculate statistics for the message board
+  // Calculate statistics for the message board using comprehensive backend data
   const getSearchStats = () => {
-    if (!hasValue || !searchNavigationState.hasMatches) {
+    if (!hasValue || !searchStats || searchStats.totalMatches === 0) {
       return "Type to search through table data";
     }
 
-    const totalCells = searchNavigationState.totalMatches;
-    const uniqueRows = new Set(
-      searchNavigationState.matches.map((match) => match.rowId),
-    ).size;
-    const uniqueFields = new Set(
-      searchNavigationState.matches.map((match) => match.columnId),
-    ).size;
+    const { totalMatches, uniqueRows, uniqueFields } = searchStats;
 
     return (
       <>
         Found <span className="font-semibold">{uniqueFields}</span> field
         {uniqueFields !== 1 ? "s" : ""} and{" "}
-        <span className="font-semibold">{totalCells}</span> cell
-        {totalCells !== 1 ? "s" : ""} (within{" "}
+        <span className="font-semibold">{totalMatches}</span> cell
+        {totalMatches !== 1 ? "s" : ""} (within{" "}
         <span className="font-semibold">{uniqueRows}</span> record
         {uniqueRows !== 1 ? "s" : ""})
       </>

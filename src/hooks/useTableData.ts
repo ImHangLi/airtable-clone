@@ -27,6 +27,12 @@ export interface SearchMatch {
   cellValue: string;
 }
 
+export interface SearchStats {
+  totalMatches: number;
+  uniqueRows: number;
+  uniqueFields: number;
+}
+
 export interface TableData {
   name: string;
   columns: TableColumn[];
