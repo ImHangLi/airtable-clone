@@ -27,9 +27,8 @@ export function HomeClientComponent({
       initialData: initialBases,
       // Keep the data fresh but don't refetch immediately since we have SSR data
       refetchOnWindowFocus: true,
-      refetchOnMount: false, // Changed to false since we have SSR data
-      // Stale time to prevent unnecessary refetches
-      staleTime: 30 * 1000, // 30 seconds
+      refetchOnMount: true,
+      staleTime: 5 * 1000,
     },
   );
 
