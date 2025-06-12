@@ -1,4 +1,4 @@
-import { EyeOff } from "lucide-react";
+import { EyeOff, Baseline, Hash } from "lucide-react";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
 import {
@@ -121,8 +121,13 @@ export default function HiddenColumnsMenu({
                   className="flex items-center justify-between gap-3 rounded-sm px-2 py-1.5 hover:bg-gray-50"
                 >
                   <div className="flex items-center gap-2">
+                    {column.type === "text" ? (
+                      <Baseline className="h-3.5 w-3.5 text-gray-500" />
+                    ) : (
+                      <Hash className="h-3.5 w-3.5 text-gray-500" />
+                    )}
                     <div className="flex flex-col">
-                      <span className="ml-[5px] text-[13px] font-normal text-gray-900">
+                      <span className="text-[13px] font-normal text-gray-900">
                         {column.name}
                       </span>
                     </div>

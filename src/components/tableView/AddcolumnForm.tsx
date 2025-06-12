@@ -1,7 +1,7 @@
 import { useForm } from "react-hook-form";
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useState } from "react";
 import { toast } from "sonner";
-import { Baseline, Hash } from "lucide-react";
+import { Baseline, Hash, ChevronDown } from "lucide-react";
 import {
   Form,
   FormField,
@@ -10,7 +10,7 @@ import {
   FormMessage,
 } from "../ui/form";
 import { Button } from "../ui/button";
-import { DropdownMenuContent } from "../ui/dropdown-menu";
+import { PopoverContent, Popover, PopoverTrigger } from "../ui/popover";
 
 export default function AddColumnForm({
   onAddColumn,
@@ -21,6 +21,8 @@ export default function AddColumnForm({
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
 }) {
+  const [typeSelectorOpen, setTypeSelectorOpen] = useState(false);
+
   const form = useForm({
     defaultValues: {
       name: "",
@@ -61,7 +63,7 @@ export default function AddColumnForm({
   const isFieldEmpty = !fieldValue?.trim();
 
   return (
-    <DropdownMenuContent className="w-64 p-4" align="end">
+    <PopoverContent className="w-64 p-4" align="end">
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <FormField
@@ -92,37 +94,56 @@ export default function AddColumnForm({
             render={({ field }) => (
               <FormItem>
                 <FormControl>
-                  <div className="relative">
-                    <select
-                      {...field}
-                      className="w-full appearance-none rounded border border-gray-200 py-2 pr-8 pl-9 text-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-400 focus:outline-none"
-                    >
-                      <option value="text">Text</option>
-                      <option value="number">Number</option>
-                    </select>
-                    <div className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 transform">
-                      {field.value === "text" ? (
-                        <Baseline className="h-3.5 w-3.5 text-gray-500" />
-                      ) : (
-                        <Hash className="h-3.5 w-3.5 text-gray-500" />
-                      )}
-                    </div>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
-                      <svg
-                        className="h-4 w-4 text-gray-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
+                  <Popover
+                    open={typeSelectorOpen}
+                    onOpenChange={setTypeSelectorOpen}
+                  >
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-auto w-full justify-between gap-2 rounded border border-gray-200 px-3 py-2 text-sm hover:bg-gray-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-400"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 9l-7 7-7-7"
-                        />
-                      </svg>
-                    </div>
-                  </div>
+                        <div className="flex items-center gap-2">
+                          {field.value === "text" ? (
+                            <Baseline className="h-3.5 w-3.5 text-gray-500" />
+                          ) : (
+                            <Hash className="h-3.5 w-3.5 text-gray-500" />
+                          )}
+                          <span>
+                            {field.value === "text" ? "Text" : "Number"}
+                          </span>
+                        </div>
+                        <ChevronDown className="h-4 w-4 text-gray-400" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-[200px] p-1">
+                      <div className="space-y-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            field.onChange("text");
+                            setTypeSelectorOpen(false);
+                          }}
+                          className="flex h-8 w-full items-center gap-2 rounded-sm px-2 text-sm hover:bg-gray-100"
+                        >
+                          <Baseline className="h-3.5 w-3.5 text-gray-500" />
+                          Text
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            field.onChange("number");
+                            setTypeSelectorOpen(false);
+                          }}
+                          className="flex h-8 w-full items-center gap-2 rounded-sm px-2 text-sm hover:bg-gray-100"
+                        >
+                          <Hash className="h-3.5 w-3.5 text-gray-500" />
+                          Number
+                        </button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </FormControl>
                 <FormMessage className="text-xs text-red-500" />
               </FormItem>
@@ -149,6 +170,6 @@ export default function AddColumnForm({
           </div>
         </form>
       </Form>
-    </DropdownMenuContent>
+    </PopoverContent>
   );
 }

@@ -1,11 +1,10 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { Filter, ChevronDown, Plus, Trash2 } from "lucide-react";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "~/components/ui/dropdown-menu";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "~/components/ui/popover";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { cn } from "~/lib/utils";
@@ -37,6 +36,15 @@ export default function FilterMenu({
 }: FilterMenuProps) {
   const [filterOpen, setFilterOpen] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  const [columnSelectorOpen, setColumnSelectorOpen] = useState<
+    Record<string, boolean>
+  >({});
+  const [operatorSelectorOpen, setOperatorSelectorOpen] = useState<
+    Record<string, boolean>
+  >({});
+  const [logicalOperatorOpen, setLogicalOperatorOpen] = useState<
+    Record<string, boolean>
+  >({});
 
   // All columns are filterable - we can filter on any column type
   const filterableColumns = columns;
@@ -168,6 +176,12 @@ export default function FilterMenu({
         ...prev,
         [filterId]: "",
       }));
+
+      // Close the popover
+      setColumnSelectorOpen((prev) => ({
+        ...prev,
+        [filterId]: false,
+      }));
     },
     [filtering, onFilteringChange, columns],
   );
@@ -194,6 +208,12 @@ export default function FilterMenu({
           [filterId]: "",
         }));
       }
+
+      // Close the popover
+      setOperatorSelectorOpen((prev) => ({
+        ...prev,
+        [filterId]: false,
+      }));
     },
     [filtering, onFilteringChange],
   );
@@ -211,6 +231,12 @@ export default function FilterMenu({
         return filter;
       });
       onFilteringChange(newFiltering);
+
+      // Close the popover
+      setLogicalOperatorOpen((prev) => ({
+        ...prev,
+        [filterId]: false,
+      }));
     },
     [filtering, onFilteringChange],
   );
@@ -226,8 +252,8 @@ export default function FilterMenu({
   );
 
   return (
-    <DropdownMenu open={filterOpen} onOpenChange={setFilterOpen}>
-      <DropdownMenuTrigger asChild>
+    <Popover open={filterOpen} onOpenChange={setFilterOpen}>
+      <PopoverTrigger asChild>
         <Button
           variant="ghost"
           size="sm"
@@ -244,14 +270,14 @@ export default function FilterMenu({
             ? "Filter"
             : `Filtered by ${getFilteredFieldNames()}`}
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
+      </PopoverTrigger>
+      <PopoverContent
         align="start"
         className="p-4"
         style={{
           width: activeFilters.length === 0 ? "331px" : "590px",
         }}
-        onCloseAutoFocus={(e) => e.preventDefault()}
+        onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -281,8 +307,16 @@ export default function FilterMenu({
                     </div>
                   ) : index === 1 ? (
                     // Only the second filter (first with logical operator) gets a dropdown
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
+                    <Popover
+                      open={logicalOperatorOpen[filter.id] ?? false}
+                      onOpenChange={(open) =>
+                        setLogicalOperatorOpen((prev) => ({
+                          ...prev,
+                          [filter.id]: open,
+                        }))
+                      }
+                    >
+                      <PopoverTrigger asChild>
                         <Button
                           variant="outline"
                           size="sm"
@@ -291,26 +325,31 @@ export default function FilterMenu({
                           {filter.logicalOperator ?? "and"}
                           <ChevronDown className="h-3 w-3" />
                         </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="w-[80px]">
-                        <DropdownMenuItem
-                          onClick={() =>
-                            handleChangeFilterLogicalOperator(filter.id, "and")
-                          }
-                          className="h-7 text-[13px] font-light"
-                        >
-                          and
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() =>
-                            handleChangeFilterLogicalOperator(filter.id, "or")
-                          }
-                          className="h-7 text-[13px] font-light"
-                        >
-                          or
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-[80px] p-1">
+                        <div className="space-y-1">
+                          <button
+                            onClick={() =>
+                              handleChangeFilterLogicalOperator(
+                                filter.id,
+                                "and",
+                              )
+                            }
+                            className="flex h-7 w-full items-center rounded-sm px-2 text-[13px] font-light hover:bg-gray-100"
+                          >
+                            and
+                          </button>
+                          <button
+                            onClick={() =>
+                              handleChangeFilterLogicalOperator(filter.id, "or")
+                            }
+                            className="flex h-7 w-full items-center rounded-sm px-2 text-[13px] font-light hover:bg-gray-100"
+                          >
+                            or
+                          </button>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                   ) : (
                     // All subsequent filters just show the logical operator as text
                     <div className="flex h-8 w-1/4 items-center justify-center rounded-xs text-[13px] font-light">
@@ -319,8 +358,16 @@ export default function FilterMenu({
                   )}
 
                   {/* Column Selector */}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
+                  <Popover
+                    open={columnSelectorOpen[filter.id] ?? false}
+                    onOpenChange={(open) =>
+                      setColumnSelectorOpen((prev) => ({
+                        ...prev,
+                        [filter.id]: open,
+                      }))
+                    }
+                  >
+                    <PopoverTrigger asChild>
                       <Button
                         variant="outline"
                         size="sm"
@@ -331,30 +378,38 @@ export default function FilterMenu({
                         </div>
                         <ChevronDown className="h-3 w-3" />
                       </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-[190px]">
-                      {filterableColumns.map((col) => (
-                        <DropdownMenuItem
-                          key={col.id}
-                          onClick={() =>
-                            handleChangeFilterColumn(filter.id, col.id)
-                          }
-                          className="h-7 text-[13px] font-light"
-                        >
-                          <div className="flex w-full items-center justify-between">
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-[190px] p-1">
+                      <div className="space-y-1">
+                        {filterableColumns.map((col) => (
+                          <button
+                            key={col.id}
+                            onClick={() =>
+                              handleChangeFilterColumn(filter.id, col.id)
+                            }
+                            className="flex h-7 w-full items-center justify-between rounded-sm px-2 text-[13px] font-light hover:bg-gray-100"
+                          >
                             <span>{col.name}</span>
                             <span className="ml-2 text-[13px] font-light text-gray-400">
                               {col.type}
                             </span>
-                          </div>
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                          </button>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
 
                   {/* Operator Selector */}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
+                  <Popover
+                    open={operatorSelectorOpen[filter.id] ?? false}
+                    onOpenChange={(open) =>
+                      setOperatorSelectorOpen((prev) => ({
+                        ...prev,
+                        [filter.id]: open,
+                      }))
+                    }
+                  >
+                    <PopoverTrigger asChild>
                       <Button
                         variant="outline"
                         size="sm"
@@ -363,21 +418,23 @@ export default function FilterMenu({
                         {formatOperatorName(filter.operator)}
                         <ChevronDown className="h-3 w-3" />
                       </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-[190px]">
-                      {availableOperators.map((op) => (
-                        <DropdownMenuItem
-                          key={op}
-                          onClick={() =>
-                            handleChangeFilterOperator(filter.id, op)
-                          }
-                          className="h-7 text-[13px] font-light"
-                        >
-                          {formatOperatorName(op)}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-[190px] p-1">
+                      <div className="space-y-1">
+                        {availableOperators.map((op) => (
+                          <button
+                            key={op}
+                            onClick={() =>
+                              handleChangeFilterOperator(filter.id, op)
+                            }
+                            className="flex h-7 w-full items-center rounded-sm px-2 text-[13px] font-light hover:bg-gray-100"
+                          >
+                            {formatOperatorName(op)}
+                          </button>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
 
                   {/* Value Input - only show if operator requires a value */}
                   {operatorRequiresValue(filter.operator) ? (
@@ -452,7 +509,7 @@ export default function FilterMenu({
             </Button>
           </div>
         )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </PopoverContent>
+    </Popover>
   );
 }

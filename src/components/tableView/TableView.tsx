@@ -26,7 +26,7 @@ import { RowContextMenu } from "./RowContextMenu";
 import { createCellRenderer } from "./cellRenderers";
 import { CELL_CONFIG, baseCellStyle } from "./constants";
 import { useSearchScrolling } from "~/hooks/useSearchScrolling";
-import { DropdownMenu, DropdownMenuTrigger } from "../ui/dropdown-menu";
+import { Popover, PopoverTrigger } from "../ui/popover";
 import AddColumnForm from "./AddcolumnForm";
 import { Plus, Baseline, Hash, ChevronDown } from "lucide-react";
 import { FloatingAddRowButton } from "./FloatingAddRowButton";
@@ -890,24 +890,24 @@ export default function TableView({
 
               {/* Add Column Button */}
               <div {...headerStyles.addColumn}>
-                <DropdownMenu
+                <Popover
                   open={isAddColumnOpen}
                   onOpenChange={setIsAddColumnOpen}
                 >
-                  <DropdownMenuTrigger asChild>
+                  <PopoverTrigger asChild>
                     <div
                       className="flex h-full w-full items-center justify-center rounded text-gray-600"
                       title="Add column"
                     >
                       <Plus className="h-4 w-4 text-gray-600" />
                     </div>
-                  </DropdownMenuTrigger>
+                  </PopoverTrigger>
                   <AddColumnForm
                     onAddColumn={handleAddColumn}
                     isOpen={isAddColumnOpen}
                     setIsOpen={setIsAddColumnOpen}
                   />
-                </DropdownMenu>
+                </Popover>
               </div>
 
               {/* Extension area to fill remaining space to the right */}
