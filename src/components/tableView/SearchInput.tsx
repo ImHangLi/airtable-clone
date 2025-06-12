@@ -3,10 +3,10 @@ import { Search, X, ChevronUp, ChevronDown } from "lucide-react";
 import { useTableSearch } from "~/hooks/useTableSearch";
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "~/components/ui/dropdown-menu";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "~/components/ui/popover";
 import type { SearchNavigationState } from "~/hooks/useTableSearch";
 import type {
   SearchMatch as BackendSearchMatch,
@@ -85,10 +85,10 @@ export function SearchInput({
   // Handle input blur - only allow if user explicitly clicks outside
   const handleInputBlur = useCallback(
     (e: React.FocusEvent<HTMLInputElement>) => {
-      // Don't lose focus if clicking on navigation buttons or other dropdown elements
+      // Don't lose focus if clicking on navigation buttons or other popover elements
       const relatedTarget = e.relatedTarget as HTMLElement;
-      if (relatedTarget?.closest('[role="menu"]')) {
-        // Refocus immediately if blur was caused by clicking dropdown elements
+      if (relatedTarget?.closest('[data-slot="popover-content"]')) {
+        // Refocus immediately if blur was caused by clicking popover elements
         inputRef.current?.focus();
         return;
       }
@@ -167,8 +167,8 @@ export function SearchInput({
   };
 
   return (
-    <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
-      <DropdownMenuTrigger asChild>
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverTrigger asChild>
         <button
           onClick={handleSearchIconClick}
           disabled={disabled}
@@ -178,9 +178,9 @@ export function SearchInput({
         >
           <Search className="h-4 w-4 text-gray-500" />
         </button>
-      </DropdownMenuTrigger>
+      </PopoverTrigger>
 
-      <DropdownMenuContent
+      <PopoverContent
         align="end"
         className="p-0"
         style={{ width: "300px", height: "74px" }}
@@ -260,7 +260,7 @@ export function SearchInput({
         <div className="flex h-[37px] items-center bg-gray-50 px-3">
           <span className="text-xs text-gray-600">{getSearchStats()}</span>
         </div>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </PopoverContent>
+    </Popover>
   );
 }

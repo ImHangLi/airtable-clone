@@ -120,6 +120,9 @@ export default function TableView({
   const [isDraftRowVisible, setIsDraftRowVisible] = useState(false);
   const [draftFocusedCell, setDraftFocusedCell] = useState<string | null>(null);
   const [newlyAddedRowId, setNewlyAddedRowId] = useState<string | null>(null);
+  const [isUserScrolling, setIsUserScrolling] = useState(false);
+  const [isDataLoading, setIsDataLoading] = useState(false);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -177,6 +180,54 @@ export default function TableView({
     onSavingStateChange?.(savingStatus);
   }, [savingStatus, onSavingStateChange]);
 
+  // Cleanup scroll timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Track data loading state to prevent search scrolling during fetch
+  useEffect(() => {
+    if (tableData.isFetching || tableData.isFetchingNextPage) {
+      setIsDataLoading(true);
+    } else {
+      // Add a delay before allowing search scrolling again to ensure data is fully loaded
+      const timeout = setTimeout(() => {
+        setIsDataLoading(false);
+      }, 300);
+      return () => clearTimeout(timeout);
+    }
+  }, [tableData.isFetching, tableData.isFetchingNextPage]);
+
+  // Add wheel event listener to detect active scrolling
+  useEffect(() => {
+    const container = parentRef.current;
+    if (!container) return;
+
+    const handleWheel = () => {
+      setIsUserScrolling(true);
+
+      // Clear existing timeout
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+
+      // Set longer timeout for wheel events
+      scrollTimeoutRef.current = setTimeout(() => {
+        setIsUserScrolling(false);
+      }, 1500); // Even longer for wheel scrolling
+    };
+
+    container.addEventListener("wheel", handleWheel, { passive: true });
+
+    return () => {
+      container.removeEventListener("wheel", handleWheel);
+    };
+  }, []);
+
   const getCellHighlightStyle = useCallback(
     (columnId: string): React.CSSProperties => {
       if (!highlights || highlights.length === 0) return {};
@@ -225,6 +276,7 @@ export default function TableView({
     parentRef: parentRef as React.RefObject<HTMLDivElement>,
     rowVirtualizer,
     rowHeight: CELL_CONFIG.height,
+    isUserScrolling: isUserScrolling || isDataLoading,
   });
 
   const updateData = useCallback(
@@ -552,6 +604,19 @@ export default function TableView({
 
   const handleScroll = useCallback(
     (e: React.UIEvent<HTMLDivElement>) => {
+      // Mark that user is actively scrolling
+      setIsUserScrolling(true);
+
+      // Clear existing timeout
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+
+      // Set timeout to mark scrolling as finished after user stops scrolling
+      scrollTimeoutRef.current = setTimeout(() => {
+        setIsUserScrolling(false);
+      }, 1000); // Increased to 1 second to be even more generous
+
       fetchMoreOnBottomReached(e.currentTarget);
     },
     [fetchMoreOnBottomReached],

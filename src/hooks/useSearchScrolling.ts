@@ -9,6 +9,7 @@ interface UseSearchScrollingOptions {
   parentRef: React.RefObject<HTMLDivElement>;
   rowVirtualizer: Virtualizer<HTMLDivElement, Element>;
   rowHeight: number;
+  isUserScrolling?: boolean;
 }
 
 export function useSearchScrolling({
@@ -17,6 +18,7 @@ export function useSearchScrolling({
   parentRef,
   rowVirtualizer,
   rowHeight,
+  isUserScrolling = false,
 }: UseSearchScrollingOptions) {
   const lastTargetMatchRef = useRef<SearchMatch | null>(null);
 
@@ -108,22 +110,34 @@ export function useSearchScrolling({
     [parentRef, tableRows, rowVirtualizer, rowHeight],
   );
 
-  // Auto-scroll when target match changes
+  // Auto-scroll when target match changes, but only if user is not actively scrolling
   useEffect(() => {
     if (
       currentTargetMatch &&
-      currentTargetMatch !== lastTargetMatchRef.current
+      currentTargetMatch !== lastTargetMatchRef.current &&
+      !isUserScrolling
     ) {
-      // Small delay to allow for DOM updates
-      const timeoutId = setTimeout(() => {
-        scrollToMatch(currentTargetMatch);
-      }, 100);
+      // Check if this is a meaningful change (not just the same match with updated data)
+      const isMeaningfulChange =
+        !lastTargetMatchRef.current ||
+        lastTargetMatchRef.current.rowId !== currentTargetMatch.rowId ||
+        lastTargetMatchRef.current.columnId !== currentTargetMatch.columnId;
 
-      lastTargetMatchRef.current = currentTargetMatch;
+      if (isMeaningfulChange) {
+        // Small delay to allow for DOM updates
+        const timeoutId = setTimeout(() => {
+          scrollToMatch(currentTargetMatch);
+        }, 100);
 
-      return () => clearTimeout(timeoutId);
+        lastTargetMatchRef.current = currentTargetMatch;
+
+        return () => clearTimeout(timeoutId);
+      } else {
+        // Just update the ref without scrolling
+        lastTargetMatchRef.current = currentTargetMatch;
+      }
     }
-  }, [currentTargetMatch, scrollToMatch]);
+  }, [currentTargetMatch, scrollToMatch, isUserScrolling]);
 
   return { scrollToMatch };
 }
