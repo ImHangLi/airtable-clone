@@ -267,7 +267,7 @@ export default function TableView({
     count: tableData.rows.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => CELL_CONFIG.height,
-    overscan: 50, // Increased from 20 for smoother scrolling
+    overscan: 5,
   });
 
   useSearchScrolling({
@@ -583,9 +583,8 @@ export default function TableView({
     (containerRefElement?: HTMLDivElement | null) => {
       if (containerRefElement) {
         const { scrollHeight, scrollTop, clientHeight } = containerRefElement;
-        // Optimized trigger distance - fetch when within 2500px of bottom
         if (
-          scrollHeight - scrollTop - clientHeight < 2500 &&
+          scrollHeight - scrollTop - clientHeight < 10000 &&
           !tableData.isFetching &&
           !tableData.isFetchingNextPage &&
           tableData.hasNextPage
