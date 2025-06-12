@@ -105,6 +105,42 @@ export function SearchInput({
     }
   };
 
+  // Handle opening search with keyboard shortcut
+  const openSearch = useCallback(() => {
+    if (!disabled) {
+      setIsOpen(true);
+      // Focus will be handled by the useEffect when isOpen changes
+    }
+  }, [disabled]);
+
+  // Add global keyboard event listener for Ctrl/Cmd+F and Esc
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Check for Ctrl+F (Windows/Linux) or Cmd+F (Mac)
+      if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+        e.preventDefault(); // Prevent browser's default find behavior
+        openSearch();
+        return;
+      }
+
+      // Handle Escape key when search is open
+      if (e.key === "Escape" && isOpen) {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsOpen(false);
+        setShouldMaintainFocus(false);
+      }
+    };
+
+    // Add event listener to document with capture phase to handle before Popover
+    document.addEventListener("keydown", handleGlobalKeyDown, true);
+
+    // Cleanup event listener on unmount
+    return () => {
+      document.removeEventListener("keydown", handleGlobalKeyDown, true);
+    };
+  }, [openSearch, isOpen]);
+
   // Handle clearing search and closing dropdown
   const handleClearAndClose = () => {
     clearSearch();
@@ -114,19 +150,7 @@ export function SearchInput({
 
   // Enhanced keyboard handling
   const handleKeyDownEnhanced = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    handleKeyDown(e); // Call the original handler
-
-    // Additional handling for Escape key
-    if (e.key === "Escape") {
-      if (hasValue) {
-        clearSearch();
-        // Keep focus and dropdown open when just clearing
-        inputRef.current?.focus();
-      } else {
-        setIsOpen(false);
-        setShouldMaintainFocus(false);
-      }
-    }
+    handleKeyDown(e); // Call the original handler for all keys
   };
 
   // Handle navigation button clicks - prevent losing focus
@@ -176,7 +200,7 @@ export function SearchInput({
           aria-label="Open search"
           type="button"
         >
-          <Search className="h-4 w-4 text-gray-500" />
+          <Search className="h-4 w-4" />
         </button>
       </PopoverTrigger>
 
