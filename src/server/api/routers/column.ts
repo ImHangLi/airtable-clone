@@ -51,47 +51,110 @@ export const columnRouter = createTRPCRouter({
   // Delete a column and all its cells
   deleteColumn: protectedProcedure
     .input(deleteColumnSchema)
-    .mutation(async ({ ctx, input }): Promise<{ success: boolean }> => {
-      try {
-        // Check if this is a primary column first
-        const [column] = await ctx.db
-          .select({ is_primary: columns.is_primary, name: columns.name })
-          .from(columns)
-          .where(eq(columns.id, input.columnId))
-          .limit(1);
+    .mutation(
+      async ({
+        ctx,
+        input,
+      }): Promise<{ success: boolean; attempts: number }> => {
+        const { columnId } = input;
+        const MAX_RETRIES = 5;
+        const INITIAL_DELAY = 1000;
+        let retryCount = 0;
 
-        if (!column) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Column not found",
-          });
+        while (retryCount < MAX_RETRIES) {
+          try {
+            console.log(
+              `Column delete attempt ${retryCount + 1} for column ${columnId}`,
+            );
+
+            // Check if this is a primary column first
+            const [column] = await ctx.db
+              .select({ is_primary: columns.is_primary, name: columns.name })
+              .from(columns)
+              .where(eq(columns.id, columnId))
+              .limit(1);
+
+            if (!column) {
+              const error = `Column ${columnId} not found`;
+              console.log(error);
+
+              // Check if we should retry for Column not found
+              if (retryCount < MAX_RETRIES - 1) {
+                retryCount++;
+                await new Promise((resolve) =>
+                  setTimeout(
+                    resolve,
+                    INITIAL_DELAY * Math.pow(2, retryCount - 1),
+                  ),
+                );
+                continue;
+              }
+
+              // After all retries, consider it a success since the column doesn't exist
+              console.log(
+                `Column ${columnId} not found after ${MAX_RETRIES} attempts, considering deletion successful`,
+              );
+              return { success: true, attempts: retryCount + 1 };
+            }
+
+            if (column.is_primary) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: "Cannot delete primary field",
+              });
+            }
+
+            // Delete all cells for this column first
+            await ctx.db.delete(cells).where(eq(cells.column_id, columnId));
+
+            // Then delete the column
+            await ctx.db.delete(columns).where(eq(columns.id, columnId));
+
+            // Success! Return with the number of attempts it took
+            console.log(`Column delete succeeded on attempt ${retryCount + 1}`);
+            return { success: true, attempts: retryCount + 1 };
+          } catch (error) {
+            console.error(
+              `Column delete attempt ${retryCount + 1} failed:`,
+              error,
+            );
+
+            // Don't retry on authentication/authorization errors or primary column errors
+            if (
+              error instanceof TRPCError &&
+              (error.code === "UNAUTHORIZED" ||
+                error.code === "FORBIDDEN" ||
+                error.code === "BAD_REQUEST")
+            ) {
+              throw error;
+            }
+
+            // Check if this is the last attempt
+            if (retryCount === MAX_RETRIES - 1) {
+              if (error instanceof TRPCError) {
+                throw error;
+              }
+              throw new TRPCError({
+                code: "INTERNAL_SERVER_ERROR",
+                message: `Failed to delete column after ${MAX_RETRIES} attempts. Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+              });
+            }
+
+            // Retry with exponential backoff
+            retryCount++;
+            await new Promise((resolve) =>
+              setTimeout(resolve, INITIAL_DELAY * Math.pow(2, retryCount - 1)),
+            );
+          }
         }
 
-        if (column.is_primary) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Cannot delete primary field",
-          });
-        }
-
-        // Delete all cells for this column first
-        await ctx.db.delete(cells).where(eq(cells.column_id, input.columnId));
-
-        // Then delete the column
-        await ctx.db.delete(columns).where(eq(columns.id, input.columnId));
-
-        return { success: true };
-      } catch (error) {
-        console.error("Error deleting column:", error);
-        if (error instanceof TRPCError) {
-          throw error;
-        }
+        // This should never be reached, but just in case
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to delete column",
+          message: "Max retries exceeded",
         });
-      }
-    }),
+      },
+    ),
 
   // Add a new column to a table
   addColumn: protectedProcedure
