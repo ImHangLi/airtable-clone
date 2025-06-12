@@ -321,12 +321,14 @@ function ViewSide({ tableId, baseId, currentViewId }: ViewSideProps) {
 
           {isCreateOpen && (
             <div className="pb-4">
-              <div className="flex items-center justify-between pr-1 hover:bg-gray-100">
+              <div
+                className="flex cursor-pointer items-center justify-between pr-1 hover:bg-gray-100"
+                onClick={handleAddView}
+              >
                 <Button
                   variant="ghost"
                   size="sm"
                   className="h-8 w-full justify-start gap-2 rounded px-2 text-[13px] font-normal text-gray-700"
-                  onClick={handleAddView}
                 >
                   <Grid className="h-4 w-4 text-blue-600" />
                   Grid
