@@ -49,9 +49,6 @@ export default function BaseTopNav({
 
       return { previousBaseData, previousBasesData };
     },
-    onSuccess: () => {
-      toast.success("Base renamed successfully");
-    },
     onError: (error, variables, context) => {
       // Rollback both caches on error
       if (context?.previousBaseData) {

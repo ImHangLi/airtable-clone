@@ -1,11 +1,7 @@
 import { EyeOff, Baseline, Hash } from "lucide-react";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "../ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { cn } from "~/lib/utils";
 import { useState, useCallback } from "react";
 import type { TableColumn } from "~/hooks/useTableData";
@@ -68,8 +64,8 @@ export default function HiddenColumnsMenu({
   );
 
   return (
-    <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
-      <DropdownMenuTrigger asChild>
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverTrigger asChild>
         <Button
           variant="ghost"
           size="sm"
@@ -88,14 +84,9 @@ export default function HiddenColumnsMenu({
               : "Hide fields"}
           </p>
         </Button>
-      </DropdownMenuTrigger>
+      </PopoverTrigger>
 
-      <DropdownMenuContent
-        align="start"
-        className="p-4"
-        style={{ width: "320px", maxHeight: "80vh" }}
-        onCloseAutoFocus={(e) => e.preventDefault()}
-      >
+      <PopoverContent align="start" className="w-80 p-4" sideOffset={8}>
         <div className="mb-4 ml-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <h3 className="text-[13px] font-medium text-gray-500">
@@ -105,7 +96,7 @@ export default function HiddenColumnsMenu({
         </div>
 
         {/* Fields list with switches */}
-        <div className="mb-4 max-h-[calc(80vh-120px)] space-y-2 overflow-y-auto">
+        <div className="mb-4 max-h-80 space-y-2 overflow-y-auto">
           {hideableColumns.length === 0 ? (
             <div className="py-2 text-center text-[13px] text-gray-500">
               No hideable fields available
@@ -167,7 +158,7 @@ export default function HiddenColumnsMenu({
             </Button>
           </div>
         </div>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </PopoverContent>
+    </Popover>
   );
 }

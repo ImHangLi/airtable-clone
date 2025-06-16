@@ -51,8 +51,6 @@ export function CreateBaseButton() {
 
       // Navigate to the new base
       router.push(`/${baseId}?color=${encodeURIComponent(color)}`);
-
-      toast.success("Base created successfully!");
     } catch (error) {
       console.error("Error creating base:", error);
       toast.error("Failed to create base. Please try again.");

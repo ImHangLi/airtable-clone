@@ -27,7 +27,42 @@ export const addColumnSchema = z.object({
   columnId: z.string().uuid("Invalid column ID"),
 });
 
+export const getColumnsSchema = z.object({
+  tableId: z.string().uuid("Invalid table ID"),
+});
+
 export const columnRouter = createTRPCRouter({
+  getColumns: protectedProcedure
+    .input(getColumnsSchema)
+    .query(async ({ ctx, input }) => {
+      try {
+        const { tableId } = input;
+
+        const tableColumns = await ctx.db
+          .select({
+            id: columns.id,
+            name: columns.name,
+            type: columns.type,
+            position: columns.position,
+            is_primary: columns.is_primary,
+          })
+          .from(columns)
+          .where(eq(columns.table_id, tableId))
+          .orderBy(columns.position);
+
+        return tableColumns;
+      } catch (error) {
+        console.error("Error fetching columns:", error);
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch columns",
+        });
+      }
+    }),
+
   // Update column name
   updateColumn: protectedProcedure
     .input(updateColumnSchema)

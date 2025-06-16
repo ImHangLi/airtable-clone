@@ -11,11 +11,6 @@ const getViewSchema = z.object({
   viewId: z.string().uuid("Invalid view ID"),
 });
 
-const getViewWithValidationSchema = z.object({
-  viewId: z.string().uuid("Invalid view ID"),
-  tableId: z.string().uuid("Invalid table ID"),
-});
-
 const updateFilterSchema = z.object({
   viewId: z.string().uuid("Invalid view ID"),
   filter: z.custom<FilterConfig[]>(),
@@ -80,69 +75,7 @@ export const viewRouter = createTRPCRouter({
           });
         }
 
-        return {
-          id: view.id,
-          name: view.name,
-          table_id: view.table_id,
-          base_id: view.base_id,
-          filters: view.filters,
-          sorts: view.sorts,
-          hiddenColumns: view.hiddenColumns,
-        };
-      } catch (error) {
-        console.error("Error getting view:", error);
-        if (error instanceof TRPCError) {
-          throw error;
-        }
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to get view",
-        });
-      }
-    }),
-
-  // Get view with table validation - ensures view belongs to the specified table
-  getViewWithValidation: protectedProcedure
-    .input(getViewWithValidationSchema)
-    .query(async ({ ctx, input }) => {
-      try {
-        const view = await ctx.db.query.views.findFirst({
-          where: eq(views.id, input.viewId),
-          columns: {
-            id: true,
-            name: true,
-            table_id: true,
-            base_id: true,
-            filters: true,
-            sorts: true,
-            hiddenColumns: true,
-          },
-        });
-
-        if (!view) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "View not found",
-          });
-        }
-
-        // Validate that the view belongs to the specified table
-        if (view.table_id !== input.tableId) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "View does not belong to the specified table",
-          });
-        }
-
-        return {
-          id: view.id,
-          name: view.name,
-          table_id: view.table_id,
-          base_id: view.base_id,
-          filters: view.filters,
-          sorts: view.sorts,
-          hiddenColumns: view.hiddenColumns,
-        };
+        return view;
       } catch (error) {
         console.error("Error getting view:", error);
         if (error instanceof TRPCError) {

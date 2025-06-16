@@ -9,7 +9,6 @@ import { TableContextMenu } from "./TableContextMenu";
 import { TableRenameForm } from "./TableRenameForm";
 import { setLastViewedTable } from "~/utils/lastViewedTable";
 import { setLastViewedView, getLastViewedView } from "~/utils/lastViewedView";
-import { useTableActions } from "~/hooks/useTableActions";
 import { useForm } from "react-hook-form";
 import {
   Form,
@@ -19,6 +18,7 @@ import {
   FormMessage,
 } from "../ui/form";
 import { getColorFromBaseId, getDarkerColorFromBaseId } from "~/lib/utils";
+import { useTableActions } from "~/hooks/useTableActions";
 
 interface TableNavProps {
   baseId: string;
@@ -120,8 +120,6 @@ export default function TableNav({ baseId, currentTableId }: TableNavProps) {
         );
       });
 
-      toast.success("Table created successfully");
-
       if (newTableData?.table?.id && newTableData?.view?.id) {
         const navigationUrl = `/${baseId}/${newTableData.table.id}/${newTableData.view.id}`;
 
@@ -153,9 +151,6 @@ export default function TableNav({ baseId, currentTableId }: TableNavProps) {
       });
 
       return { previousTables };
-    },
-    onSuccess: () => {
-      toast.success("Table renamed successfully");
     },
     onError: (error, variables, context) => {
       // Rollback optimistic update on error
