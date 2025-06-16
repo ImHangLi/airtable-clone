@@ -52,6 +52,9 @@ export function useTableSearch({
   const onSearchRef = useRef(onSearch);
   const onSearchMatchesRef = useRef(onSearchMatches);
 
+  // Track previous search results to detect when new results arrive
+  const prevSearchResultsRef = useRef<BackendSearchMatch[]>([]);
+
   useEffect(() => {
     onSearchRef.current = onSearch;
     onSearchMatchesRef.current = onSearchMatches;
@@ -72,6 +75,32 @@ export function useTableSearch({
     }));
   }, [debouncedSearchValue, backendSearchMatches]);
 
+  // Reset match index when search value changes OR when new results arrive
+  useEffect(() => {
+    setCurrentMatchIndex(0);
+  }, [debouncedSearchValue]);
+
+  // Auto-scroll to first result when new search results arrive
+  useEffect(() => {
+    const prevResults = prevSearchResultsRef.current;
+    const currentResults = backendSearchMatches;
+
+    // Check if we have new search results (different from previous)
+    const hasNewResults =
+      currentResults.length > 0 &&
+      debouncedSearchValue.trim() !== "" &&
+      (prevResults.length !== currentResults.length ||
+        JSON.stringify(prevResults) !== JSON.stringify(currentResults));
+
+    if (hasNewResults) {
+      // Reset to first result and trigger scroll
+      setCurrentMatchIndex(0);
+    }
+
+    // Update the previous results reference
+    prevSearchResultsRef.current = currentResults;
+  }, [backendSearchMatches, debouncedSearchValue]);
+
   // Update current target match when matches or index changes - stabilized with JSON comparison
   const searchNavigationState = useMemo(() => {
     const updatedMatches = searchMatches.map((match, index) => ({
@@ -89,11 +118,6 @@ export function useTableSearch({
 
   // Store previous navigation state to prevent unnecessary callbacks
   const prevNavigationStateRef = useRef<SearchNavigationState | null>(null);
-
-  // Reset match index when search value changes
-  useEffect(() => {
-    setCurrentMatchIndex(0);
-  }, [debouncedSearchValue]);
 
   // Call the onSearch callback when debounced value changes
   useEffect(() => {
@@ -144,6 +168,7 @@ export function useTableSearch({
   const clearSearch = useCallback(() => {
     setSearchValue("");
     setCurrentMatchIndex(0);
+    prevSearchResultsRef.current = []; // Reset previous results
     if (onInvalidateTableData) {
       onInvalidateTableData();
     }
