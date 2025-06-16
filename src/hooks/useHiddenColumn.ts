@@ -11,7 +11,6 @@ import type { ViewActions } from "./useViewData";
 
 interface UseHiddenColumnProps {
   viewId: string;
-  tableId?: string;
   columns: TableColumn[];
   viewActions?: ViewActions;
   autoSave?: boolean;
@@ -35,7 +34,6 @@ interface UseHiddenColumnReturn {
 
 export function useHiddenColumn({
   viewId,
-  tableId,
   columns,
   viewActions,
   autoSave = true,
@@ -46,11 +44,11 @@ export function useHiddenColumn({
   const [isSaving, setIsSaving] = useState(false);
 
   // Get view configuration (fallback if viewActions not provided)
-  const { data: view, isLoading } = api.view.getViewWithValidation.useQuery(
-    { viewId, tableId: tableId! },
+  const { data: view, isLoading } = api.view.getView.useQuery(
+    { viewId },
     {
-      enabled: !!viewId && !!tableId && !viewActions, // Only query if viewActions not provided and tableId available
-      staleTime: 1000 * 30, // 30 seconds - reasonable for view config
+      enabled: !!viewId && !viewActions, // Only query if viewActions not provided and tableId available
+      staleTime: 1000 * 30,
       refetchOnWindowFocus: false,
     },
   );

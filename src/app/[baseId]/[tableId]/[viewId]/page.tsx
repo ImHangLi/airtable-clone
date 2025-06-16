@@ -53,17 +53,12 @@ export default function TableViewPage({
       hasMatches: false,
     });
 
-  // Simple fix: Just invalidate view queries when switching tables/views
   useEffect(() => {
-    void utils.view.getViewWithValidation.invalidate({ viewId, tableId });
-  }, [tableId, viewId, utils]);
+    void utils.view.getView.invalidate({ viewId });
+  }, [viewId, utils]);
 
   // Load view data and actions
-  const {
-    viewData,
-    viewActions,
-    error: viewError,
-  } = useViewData({ viewId, tableId });
+  const { viewData, viewActions, error: viewError } = useViewData({ viewId });
 
   // Memoize initial values to prevent infinite loops
   const initialFilters = useMemo(
@@ -90,7 +85,7 @@ export default function TableViewPage({
     autoSave: true,
   });
 
-  // Use view-aware sorting hook
+  // Use view-aware sorting hook with initial sorting
   const {
     sorting,
     activeSorting,
@@ -115,6 +110,52 @@ export default function TableViewPage({
     filtering: completeFilters,
   });
 
+  // 🎯 Clean up sorting when columns are deleted
+  useEffect(() => {
+    if (
+      !tableData?.columns ||
+      tableData.columns.length === 0 ||
+      sorting.length === 0
+    )
+      return;
+
+    const currentColumnIds = tableData.columns.map((col) => col.id);
+    const validSorts = sorting.filter((sort) =>
+      currentColumnIds.includes(sort.id),
+    );
+
+    // If some sorts were removed (deleted columns), update the sorting
+    if (validSorts.length !== sorting.length) {
+      console.log(
+        `🧹 Cleaning up ${sorting.length - validSorts.length} deleted column(s) from sorting`,
+      );
+      handleSortingChange(validSorts);
+    }
+  }, [tableData?.columns, sorting, handleSortingChange]);
+
+  // 🎯 Clean up filtering when columns are deleted
+  useEffect(() => {
+    if (
+      !tableData?.columns ||
+      tableData.columns.length === 0 ||
+      filtering.length === 0
+    )
+      return;
+
+    const currentColumnIds = tableData.columns.map((col) => col.id);
+    const validFilters = filtering.filter((filter) =>
+      currentColumnIds.includes(filter.columnId),
+    );
+
+    // If some filters were removed (deleted columns), update the filtering
+    if (validFilters.length !== filtering.length) {
+      console.log(
+        `🧹 Cleaning up ${filtering.length - validFilters.length} deleted column(s) from filtering`,
+      );
+      handleFilteringChange(validFilters);
+    }
+  }, [tableData?.columns, filtering, handleFilteringChange]);
+
   // Use view-aware hidden columns hook with actual table columns
   const {
     hiddenColumns,
@@ -124,7 +165,6 @@ export default function TableViewPage({
     loading: columnVisibilityLoading,
   } = useHiddenColumn({
     viewId,
-    tableId,
     columns: tableData?.columns ?? [],
     viewActions,
     autoSave: true,

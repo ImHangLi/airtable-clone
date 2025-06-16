@@ -40,13 +40,12 @@ export function useViewActions({
     onMutate: async ({ viewId, name }) => {
       // Cancel outgoing queries for both endpoints
       await utils.view.getViewsByTable.cancel({ tableId });
-      await utils.view.getViewWithValidation.cancel({ viewId, tableId });
+      await utils.view.getView.cancel({ viewId });
 
       // Get previous data from both caches
       const previousViews = utils.view.getViewsByTable.getData({ tableId });
-      const previousViewData = utils.view.getViewWithValidation.getData({
+      const previousViewData = utils.view.getView.getData({
         viewId,
-        tableId,
       });
 
       // Optimistically update the views list cache
@@ -58,7 +57,7 @@ export function useViewActions({
       });
 
       // Optimistically update the individual view data cache
-      utils.view.getViewWithValidation.setData({ viewId, tableId }, (old) => {
+      utils.view.getView.setData({ viewId }, (old) => {
         if (!old) return old;
         return { ...old, name };
       });
@@ -71,15 +70,15 @@ export function useViewActions({
         utils.view.getViewsByTable.setData({ tableId }, context.previousViews);
       }
       if (context?.previousViewData) {
-        utils.view.getViewWithValidation.setData(
-          { viewId, tableId },
+        utils.view.getView.setData(
+          { viewId },
           context.previousViewData,
         );
       }
       toast.error(`Failed to rename view: ${error.message}`);
       // Only invalidate on error to ensure data consistency
       void utils.view.getViewsByTable.invalidate({ tableId });
-      void utils.view.getViewWithValidation.invalidate({ viewId, tableId });
+      void utils.view.getView.invalidate({ viewId });
     },
   });
 

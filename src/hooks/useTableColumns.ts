@@ -125,6 +125,12 @@ export function useTableColumns({
 
       return { previousData };
     },
+    onSuccess: () => {
+      void utils.data.getInfiniteTableData.invalidate(queryParams);
+      // 🎯 Invalidate view queries to refresh view control UI
+      void utils.view.getView.invalidate();
+      void utils.view.getViewsByTable.invalidate({ tableId });
+    },
     onError: (error, _, context) => {
       // 🎯 Only revert optimistic update on error
       if (context?.previousData) {

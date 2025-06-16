@@ -153,11 +153,10 @@ export function useTableRows({
       return { previousData };
     },
     onSuccess: (result) => {
-      // 🎯 Optimistic update succeeded! Log attempt count but trust the update
       if (result.attempts > 1) {
         console.log(`Cell update succeeded after ${result.attempts} attempts`);
       }
-      // No invalidation needed - trust our optimistic update + server success
+      void utils.data.getInfiniteTableData.invalidate(queryParams);
     },
     onError: (error, _, context) => {
       // 🎯 Only revert optimistic update on permanent failure

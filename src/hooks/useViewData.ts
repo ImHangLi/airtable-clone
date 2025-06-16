@@ -18,7 +18,6 @@ export interface ViewData {
 
 export interface UseViewDataProps {
   viewId: string;
-  tableId?: string;
 }
 
 export interface ViewActions {
@@ -36,7 +35,6 @@ export interface UseViewDataReturn {
 
 export function useViewData({
   viewId,
-  tableId,
 }: UseViewDataProps): UseViewDataReturn {
   const [localViewData, setLocalViewData] = useState<ViewData | null>(null);
 
@@ -46,10 +44,10 @@ export function useViewData({
     isLoading,
     error: queryError,
     refetch,
-  } = api.view.getViewWithValidation.useQuery(
-    { viewId, tableId: tableId ?? "" },
+  } = api.view.getView.useQuery(
+    { viewId },
     {
-      enabled: !!viewId && !!tableId,
+      enabled: !!viewId,
       staleTime: 1000 * 30, // 30 seconds - reasonable for view config
       refetchOnWindowFocus: false,
     },

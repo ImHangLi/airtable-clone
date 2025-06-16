@@ -108,9 +108,7 @@ export function useTableData({
       enabled: !!tableId,
       getNextPageParam: (lastPage) => lastPage.nextCursor,
       retry: (failureCount: number) => failureCount < 2,
-      staleTime: 30000,
-      refetchOnWindowFocus: false,
-      // 🚨 Add better error recovery
+      staleTime: 0,
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
     },
   );

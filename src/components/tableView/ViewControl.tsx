@@ -10,7 +10,7 @@ import {
   Users,
 } from "lucide-react";
 import { Button } from "../ui/button";
-import { useState, useCallback, memo } from "react";
+import { useState, useCallback } from "react";
 import { toast } from "sonner";
 import { api } from "~/trpc/react";
 import type { TableData } from "~/hooks/useTableData";
@@ -50,7 +50,7 @@ interface ViewControlProps {
   onInvalidateTableData?: () => void;
 }
 
-export default memo(function ViewControl({
+export default function ViewControl({
   tableId,
   baseId,
   currentViewId,
@@ -85,7 +85,6 @@ export default memo(function ViewControl({
   // Use the view data hook for current view info
   const { viewData: currentView } = useViewData({
     viewId: currentViewId,
-    tableId,
   });
 
   // Use the view actions hook for all view management
@@ -315,4 +314,4 @@ export default memo(function ViewControl({
       )}
     </div>
   );
-});
+};
