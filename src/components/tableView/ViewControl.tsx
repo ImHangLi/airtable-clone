@@ -21,7 +21,7 @@ import HiddenColumnsMenu from "./HiddenColumnsMenu";
 import type { FilterConfig } from "~/types/filtering";
 import type { SortConfig, ColumnHighlight } from "~/types/sorting";
 import type { SearchNavigationState } from "~/hooks/useTableSearch";
-import { useViewData } from "~/hooks/useViewData";
+import { useViewConfig } from "~/hooks/useViewConfig";
 import { useViewActions } from "~/hooks/useViewActions";
 import { ViewContextMenu } from "./ViewContextMenu";
 import { useSearchStats } from "~/hooks/useSearchStats";
@@ -82,9 +82,15 @@ export default function ViewControl({
     search: searchQuery,
   });
 
-  // Use the view data hook for current view info
-  const { viewData: currentView } = useViewData({
+  // Get table columns (lightweight query)
+  const { data: tableColumns = [] } = api.column.getColumns.useQuery({
+    tableId,
+  });
+
+  // Use the view config hook for current view info
+  const { viewConfig: currentView } = useViewConfig({
     viewId: currentViewId,
+    columns: tableColumns,
   });
 
   // Use the view actions hook for all view management
@@ -314,4 +320,4 @@ export default function ViewControl({
       )}
     </div>
   );
-};
+}

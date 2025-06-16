@@ -35,20 +35,16 @@ export function useViewActions({
     },
   );
 
-  // Update view name mutation
   const updateViewNameMutation = api.view.updateViewName.useMutation({
     onMutate: async ({ viewId, name }) => {
-      // Cancel outgoing queries for both endpoints
+      // Cancel outgoing queries for the views list only
       await utils.view.getViewsByTable.cancel({ tableId });
-      await utils.view.getView.cancel({ viewId });
 
-      // Get previous data from both caches
+      // Get previous data from views list cache only
       const previousViews = utils.view.getViewsByTable.getData({ tableId });
-      const previousViewData = utils.view.getView.getData({
-        viewId,
-      });
 
-      // Optimistically update the views list cache
+      // Optimistically update ONLY the views list cache
+      // Don't touch the individual view data cache to avoid overwriting config changes
       utils.view.getViewsByTable.setData({ tableId }, (old) => {
         if (!old) return old;
         return old.map((view) =>
@@ -56,29 +52,22 @@ export function useViewActions({
         );
       });
 
-      // Optimistically update the individual view data cache
-      utils.view.getView.setData({ viewId }, (old) => {
-        if (!old) return old;
-        return { ...old, name };
-      });
-
-      return { previousViews, previousViewData };
+      return { previousViews };
     },
-    onError: (error, { viewId }, context) => {
-      // Revert optimistic updates for both caches
+    onError: (error, _, context) => {
+      // Revert optimistic updates for views list only
       if (context?.previousViews) {
         utils.view.getViewsByTable.setData({ tableId }, context.previousViews);
       }
-      if (context?.previousViewData) {
-        utils.view.getView.setData(
-          { viewId },
-          context.previousViewData,
-        );
-      }
       toast.error(`Failed to rename view: ${error.message}`);
-      // Only invalidate on error to ensure data consistency
+      // Only invalidate views list on error
       void utils.view.getViewsByTable.invalidate({ tableId });
-      void utils.view.getView.invalidate({ viewId });
+    },
+    onSuccess: (updatedView) => {
+      // After successful rename, invalidate the individual view cache
+      // to ensure the name is updated everywhere, but this happens after
+      // the mutation is complete so it won't overwrite config changes
+      void utils.view.getView.invalidate({ viewId: updatedView.id });
     },
   });
 

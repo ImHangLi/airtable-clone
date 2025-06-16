@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useCallback, useMemo, useEffect } from "react";
+import { use, useState, useCallback, useEffect } from "react";
 import { toast } from "sonner";
 import BaseTopNav from "~/components/base/BaseTopNav";
 import TableNav from "~/components/tableView/TableNav";
@@ -9,10 +9,7 @@ import ViewSide from "~/components/tableView/ViewSide";
 import TableView from "~/components/tableView/TableView";
 import { TableSkeleton } from "~/components/tableView/TableSkeleton";
 import { useTableData } from "~/hooks/useTableData";
-import { useViewData } from "~/hooks/useViewData";
-import { useViewFiltering } from "~/hooks/useViewFiltering";
-import { useViewSorting } from "~/hooks/useViewSorting";
-import { useHiddenColumn } from "~/hooks/useHiddenColumn";
+import { useViewConfig } from "~/hooks/useViewConfig";
 import { getColorFromBaseId } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { setLastViewedTable } from "~/utils/lastViewedTable";
@@ -57,46 +54,28 @@ export default function TableViewPage({
     void utils.view.getView.invalidate({ viewId });
   }, [viewId, utils]);
 
-  // Load view data and actions
-  const { viewData, viewActions, error: viewError } = useViewData({ viewId });
-
-  // Memoize initial values to prevent infinite loops
-  const initialFilters = useMemo(
-    () => viewData?.filters ?? [],
-    [viewData?.filters],
-  );
-  const initialSorting = useMemo(
-    () => viewData?.sorts ?? [],
-    [viewData?.sorts],
-  );
-  const initialHiddenColumns = useMemo(
-    () => viewData?.hiddenColumns ?? [],
-    [viewData?.hiddenColumns],
-  );
-
-  // Use view-aware filtering hook
-  const {
-    filtering,
-    completeFilters,
-    setFiltering: handleFilteringChange,
-  } = useViewFiltering({
-    initialFilters,
-    viewActions,
-    autoSave: true,
+  // Get table columns with a lightweight query
+  const { data: tableColumns = [] } = api.column.getColumns.useQuery({
+    tableId,
   });
 
-  // Use view-aware sorting hook with initial sorting
+  // Load view configuration with table columns
   const {
-    sorting,
-    activeSorting,
-    setSorting: handleSortingChange,
-  } = useViewSorting({
-    initialSorting,
-    viewActions,
-    autoSave: true,
+    viewConfig,
+    error: viewError,
+    activeFilters,
+    activeSorts,
+    updateFilters: handleFilteringChange,
+    updateSorts: handleSortingChange,
+    updateHiddenColumns: setHiddenColumns,
+    showAllColumns,
+    hideAllColumns,
+  } = useViewConfig({
+    viewId,
+    columns: tableColumns,
   });
 
-  // Get table data using our custom hook with view-aware filters and sorting
+  // Get filtered table data using view configuration
   const {
     loading: hookLoadingStatus,
     error,
@@ -106,70 +85,12 @@ export default function TableViewPage({
     tableId,
     baseId,
     search: searchQuery,
-    sorting: activeSorting,
-    filtering: completeFilters,
+    sorting: activeSorts,
+    filtering: activeFilters,
   });
 
-  // 🎯 Clean up sorting when columns are deleted
-  useEffect(() => {
-    if (
-      !tableData?.columns ||
-      tableData.columns.length === 0 ||
-      sorting.length === 0
-    )
-      return;
-
-    const currentColumnIds = tableData.columns.map((col) => col.id);
-    const validSorts = sorting.filter((sort) =>
-      currentColumnIds.includes(sort.id),
-    );
-
-    // If some sorts were removed (deleted columns), update the sorting
-    if (validSorts.length !== sorting.length) {
-      console.log(
-        `🧹 Cleaning up ${sorting.length - validSorts.length} deleted column(s) from sorting`,
-      );
-      handleSortingChange(validSorts);
-    }
-  }, [tableData?.columns, sorting, handleSortingChange]);
-
-  // 🎯 Clean up filtering when columns are deleted
-  useEffect(() => {
-    if (
-      !tableData?.columns ||
-      tableData.columns.length === 0 ||
-      filtering.length === 0
-    )
-      return;
-
-    const currentColumnIds = tableData.columns.map((col) => col.id);
-    const validFilters = filtering.filter((filter) =>
-      currentColumnIds.includes(filter.columnId),
-    );
-
-    // If some filters were removed (deleted columns), update the filtering
-    if (validFilters.length !== filtering.length) {
-      console.log(
-        `🧹 Cleaning up ${filtering.length - validFilters.length} deleted column(s) from filtering`,
-      );
-      handleFilteringChange(validFilters);
-    }
-  }, [tableData?.columns, filtering, handleFilteringChange]);
-
-  // Use view-aware hidden columns hook with actual table columns
-  const {
-    hiddenColumns,
-    setHiddenColumns,
-    showAllColumns,
-    hideAllColumns,
-    loading: columnVisibilityLoading,
-  } = useHiddenColumn({
-    viewId,
-    columns: tableData?.columns ?? [],
-    viewActions,
-    autoSave: true,
-    initialHiddenColumns,
-  });
+  // Get hidden columns from view config
+  const hiddenColumns = viewConfig?.hiddenColumns ?? [];
 
   // Memoize callback handlers to prevent unnecessary re-renders
   const handleSearchQueryChange = useCallback((query: string) => {
@@ -234,8 +155,7 @@ export default function TableViewPage({
     });
 
   // Combine loading states
-  const currentLoadingStatus =
-    tableSavingStatus ?? columnVisibilityLoading ?? hookLoadingStatus;
+  const currentLoadingStatus = tableSavingStatus ?? hookLoadingStatus;
 
   // Derived values for UI
   const baseName = baseNameAndColor?.name;
@@ -308,27 +228,32 @@ export default function TableViewPage({
 
       {/* View Controls */}
       <ViewControl
+        // Basic identifiers
         tableId={tableId}
         baseId={baseId}
         currentViewId={viewId}
+        // Data and state
         tableData={tableData ?? undefined}
         searchQuery={searchQuery}
-        setSearchQuery={handleSearchQueryChange}
-        sorting={sorting}
-        loadingStatus={currentLoadingStatus}
-        onSortingChange={handleSortingChange}
-        filtering={filtering}
-        onFilteringChange={handleFilteringChange}
-        onSortHighlightChange={handleSortHighlightChange}
-        onFilterHighlightChange={handleFilterHighlightChange}
+        sorting={activeSorts}
+        filtering={activeFilters}
         hiddenColumns={hiddenColumns}
+        loadingStatus={currentLoadingStatus}
+        isViewSideOpen={isViewSideOpen}
+        // Search handlers
+        setSearchQuery={handleSearchQueryChange}
+        onSearchMatches={handleSearchMatches}
+        onInvalidateTableData={handleInvalidateTableData}
+        // View configuration handlers
+        onSortingChange={handleSortingChange}
+        onFilteringChange={handleFilteringChange}
         onSetHiddenColumns={setHiddenColumns}
         onShowAllColumns={showAllColumns}
         onHideAllColumns={hideAllColumns}
-        isViewSideOpen={isViewSideOpen}
+        // UI interaction handlers
         onToggleViewSide={handleToggleViewSide}
-        onSearchMatches={handleSearchMatches}
-        onInvalidateTableData={handleInvalidateTableData}
+        onSortHighlightChange={handleSortHighlightChange}
+        onFilterHighlightChange={handleFilterHighlightChange}
       />
 
       {/* Main Content Area */}
