@@ -8,11 +8,10 @@ import {
   type TableColumn,
   type ColumnActions,
 } from "./useTableColumns";
-import { useTableFiltering } from "./useTableFiltering";
-import { useTableSorting } from "./useTableSorting";
 
 export { type TableColumn, type TableRow };
 
+// --- Core Types ---
 export interface QueryParams {
   tableId: string;
   limit: number;
@@ -25,12 +24,6 @@ export interface SearchMatch {
   rowId: string;
   columnId: string;
   cellValue: string;
-}
-
-export interface SearchStats {
-  totalMatches: number;
-  uniqueRows: number;
-  uniqueFields: number;
 }
 
 export interface TableData {
@@ -51,6 +44,7 @@ export interface TableActions extends RowActions, ColumnActions {
   refetch: () => void;
 }
 
+// --- Props & Return Types ---
 interface UseTableDataProps {
   tableId: string;
   baseId: string;
@@ -66,44 +60,38 @@ interface UseTableDataReturn {
   tableActions: TableActions;
 }
 
-export function useTableData({
-  tableId,
-  baseId,
-  search,
-  sorting,
-  filtering,
-}: UseTableDataProps): UseTableDataReturn {
-  const debouncedSearch = search?.trim() ?? "";
-  const hasSearch = Boolean(debouncedSearch);
+function createQueryConfig(props: UseTableDataProps): QueryParams {
+  const { tableId, search, sorting = [], filtering = [] } = props;
+
+  return {
+    tableId,
+    limit: 100,
+    sorting,
+    filtering,
+    search: search?.trim() ?? undefined,
+  };
+}
+
+export function useTableData(props: UseTableDataProps): UseTableDataReturn {
+  const { tableId, baseId } = props;
   const utils = api.useUtils();
 
-  // Use specialized hooks
-  const { completeFilters, isFilterResult } = useTableFiltering({ filtering });
-  const { activeSorting } = useTableSorting({ sorting });
-
-  // Helper function to get query params for cache operations
-  const getQueryParams = useCallback(
-    () => ({
-      tableId,
-      limit: 100,
-      sorting: activeSorting,
-      filtering: completeFilters,
-      search: hasSearch ? debouncedSearch : undefined,
-    }),
-    [tableId, hasSearch, activeSorting, completeFilters, debouncedSearch],
+  // 1. Build query configuration
+  const queryConfig = createQueryConfig(props);
+  const hasFiltersApplied = Boolean(
+    queryConfig.filtering?.length || queryConfig.search,
   );
 
-  // 🚨 Cancel previous queries when tableId changes
+  // 2. Cancel previous queries when table changes
   useEffect(() => {
-    // Cancel any pending queries for the previous table when switching
     return () => {
       void utils.data.getInfiniteTableData.cancel();
     };
   }, [tableId, utils.data.getInfiniteTableData]);
 
-  // Use tRPC's useInfiniteQuery for proper pagination
+  // 3. Fetch table data
   const infiniteQuery = api.data.getInfiniteTableData.useInfiniteQuery(
-    getQueryParams(),
+    queryConfig,
     {
       enabled: !!tableId,
       getNextPageParam: (lastPage) => lastPage.nextCursor,
@@ -113,56 +101,18 @@ export function useTableData({
     },
   );
 
-  // Flatten all pages into a single array of rows
-  const allRows = useMemo(() => {
-    if (!infiniteQuery.data?.pages) return [];
-    return infiniteQuery.data.pages.flatMap((page) => page.items);
-  }, [infiniteQuery.data?.pages]);
-
-  // Flatten all search matches from all pages
-  const allSearchMatches = useMemo(() => {
-    if (!infiniteQuery.data?.pages) return [];
-    return infiniteQuery.data.pages.flatMap((page) => page.searchMatches ?? []);
-  }, [infiniteQuery.data?.pages]);
-
-  // Get table info from first page
-  const tableInfo = infiniteQuery.data?.pages[0]?.tableInfo;
-  const totalRowCount = infiniteQuery.data?.pages[0]?.totalRowCount ?? 0;
-
-  // Extract specific query properties to avoid re-renders from infiniteQuery object changes
-  const hasNextPage = infiniteQuery.hasNextPage;
-  const isFetching = infiniteQuery.isFetching;
-  const isFetchingNextPage = infiniteQuery.isFetchingNextPage;
-  const fetchNextPage = useCallback(
-    () => void infiniteQuery.fetchNextPage(),
-    [infiniteQuery],
-  );
-  const refetch = useCallback(
-    () => void infiniteQuery.refetch(),
-    [infiniteQuery],
-  );
-
-  // Get query params for mutations
-  const queryParams = getQueryParams();
-
-  // Use specialized hooks for operations
-  const { rowActions, loading: rowLoading } = useTableRows({
-    tableId,
-    baseId,
-    queryParams,
-    tableInfo,
-  });
-
-  const { columnActions, loading: columnLoading } = useTableColumns({
-    tableId,
-    baseId,
-    queryParams,
-    tableInfo,
-  });
-
-  // Transform data to our clean format
+  // 4. Process infinite query results
   const tableData = useMemo((): TableData | null => {
+    const pages = infiniteQuery.data?.pages;
+    if (!pages || pages.length === 0) return null;
+
+    const firstPage = pages[0];
+    const tableInfo = firstPage?.tableInfo;
     if (!tableInfo) return null;
+
+    // Flatten all pages
+    const allRows = pages.flatMap((page) => page.items);
+    const allSearchMatches = pages.flatMap((page) => page.searchMatches ?? []);
 
     return {
       name: tableInfo.name,
@@ -175,24 +125,41 @@ export function useTableData({
       rows: allRows,
       searchMatches: allSearchMatches,
       totalRows: allRows.length,
-      totalDBRowCount: totalRowCount,
-      hasNextPage,
-      fetchNextPage,
-      isFetching,
-      isFetchingNextPage,
-      isFilterResult,
+      totalDBRowCount: firstPage?.totalRowCount ?? 0,
+      hasNextPage: infiniteQuery.hasNextPage,
+      fetchNextPage: () => void infiniteQuery.fetchNextPage(),
+      isFetching: infiniteQuery.isFetching,
+      isFetchingNextPage: infiniteQuery.isFetchingNextPage,
+      isFilterResult: hasFiltersApplied,
     };
-  }, [
-    tableInfo,
-    allRows,
-    allSearchMatches,
-    totalRowCount,
-    isFilterResult,
-    hasNextPage,
-    isFetching,
-    isFetchingNextPage,
-    fetchNextPage,
-  ]);
+  }, [infiniteQuery, hasFiltersApplied]);
+
+  // 5. Set up table operations (rows & columns)
+  const firstPageTableInfo = infiniteQuery.data?.pages[0]?.tableInfo;
+
+  const { rowActions, loading: rowLoading } = useTableRows({
+    tableId,
+    baseId,
+    queryParams: queryConfig,
+    tableInfo: firstPageTableInfo
+      ? { columns: firstPageTableInfo.columns }
+      : null,
+  });
+
+  const { columnActions, loading: columnLoading } = useTableColumns({
+    tableId,
+    baseId,
+    queryParams: queryConfig,
+    tableInfo: firstPageTableInfo
+      ? { columns: firstPageTableInfo.columns }
+      : null,
+  });
+
+  // 6. Combine all actions
+  const refetch = useCallback(
+    () => void infiniteQuery.refetch(),
+    [infiniteQuery],
+  );
 
   const tableActions = useMemo(
     (): TableActions => ({
@@ -203,38 +170,24 @@ export function useTableData({
     [rowActions, columnActions, refetch],
   );
 
-  // Calculate combined loading state
+  // 7. Calculate loading & error states
   const loading = useMemo(() => {
-    const isInitialLoading = infiniteQuery.isPending && !infiniteQuery.data;
-
-    if (isInitialLoading) {
+    if (infiniteQuery.isPending && !infiniteQuery.data) {
       return "Loading...";
     }
-
-    // Check for specific operation loading states (prioritize more specific operations)
     return rowLoading ?? columnLoading ?? null;
   }, [infiniteQuery.isPending, infiniteQuery.data, rowLoading, columnLoading]);
 
-  // Error handling
   const error = useMemo(() => {
     if (infiniteQuery.error) {
-      console.error(`❌ Table data query error for table ${tableId}:`, {
-        error: infiniteQuery.error,
-        message: infiniteQuery.error.message,
-        params: getQueryParams(),
-        isPending: infiniteQuery.isPending,
-        isFetching: infiniteQuery.isFetching,
+      console.error(`❌ Table data error for table ${tableId}:`, {
+        error: infiniteQuery.error.message,
+        queryConfig,
       });
       return infiniteQuery.error.message;
     }
     return null;
-  }, [
-    infiniteQuery.error,
-    tableId,
-    getQueryParams,
-    infiniteQuery.isPending,
-    infiniteQuery.isFetching,
-  ]);
+  }, [infiniteQuery.error, tableId, queryConfig]);
 
   return {
     loading,

@@ -1,6 +1,11 @@
 import { api } from "~/trpc/react";
 import { useDebounce } from "./useDebounce";
-import type { SearchStats } from "./useTableData";
+
+export interface SearchStats {
+  totalMatches: number;
+  uniqueRows: number;
+  uniqueFields: number;
+}
 
 interface UseSearchStatsProps {
   tableId: string;

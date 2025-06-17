@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { api } from "~/trpc/react";
 import { toast } from "sonner";
 import type { FilterConfig } from "~/types/filtering";
@@ -14,13 +14,11 @@ export interface ViewConfig {
   filters: FilterConfig[];
   sorts: SortConfig[];
   hiddenColumns: string[];
-  created_at: Date;
-  updated_at: Date;
 }
 
 export interface UseViewConfigProps {
   viewId: string;
-  columns: TableColumn[];
+  tableId: string;
 }
 
 export interface UseViewConfigReturn {
@@ -28,106 +26,157 @@ export interface UseViewConfigReturn {
   viewConfig: ViewConfig | null;
   isLoading: boolean;
   error: string | null;
+  columns: TableColumn[];
 
   // Processed data for table queries
   activeFilters: FilterConfig[];
   activeSorts: SortConfig[];
-  visibleColumns: TableColumn[];
+
+  // UI data (includes incomplete filters)
+  allFilters: FilterConfig[];
 
   // Actions
   updateFilters: (filters: FilterConfig[]) => void;
   updateSorts: (sorts: SortConfig[]) => void;
   updateHiddenColumns: (hiddenColumns: string[]) => void;
-  toggleColumnVisibility: (columnId: string) => void;
   showAllColumns: () => void;
   hideAllColumns: () => void;
 }
 
 export function useViewConfig({
   viewId,
-  columns,
+  tableId,
 }: UseViewConfigProps): UseViewConfigReturn {
-  const [localConfig, setLocalConfig] = useState<ViewConfig | null>(null);
+  const utils = api.useUtils();
 
   // Fetch view configuration
   const {
-    data: viewConfig,
+    data,
     isLoading,
     error: queryError,
-    refetch,
-  } = api.view.getView.useQuery(
-    { viewId },
+  } = api.view.getViewWithColumns.useQuery(
+    { viewId, tableId },
     {
-      enabled: !!viewId,
-      staleTime: 30000,
-      refetchOnWindowFocus: false,
+      enabled: !!viewId && !!tableId,
     },
   );
 
-  // Mutations with optimistic updates
+  const viewConfig = data?.view ?? null;
+  const columns = useMemo(() => data?.tableColumns ?? [], [data?.tableColumns]);
+
+  // Mutations with optimistic updates that update tRPC cache directly
   const updateFilterMutation = api.view.updateFilter.useMutation({
     onMutate: async ({ filter }) => {
-      if (localConfig) {
-        setLocalConfig({ ...localConfig, filters: filter });
-      }
+      // Cancel queries
+      await utils.view.getViewWithColumns.cancel({ viewId, tableId });
+
+      // Get previous data
+      const previousData = utils.view.getViewWithColumns.getData({
+        viewId,
+        tableId,
+      });
+
+      // Update tRPC cache directly - syncs across ALL hook instances
+      utils.view.getViewWithColumns.setData({ viewId, tableId }, (old) => {
+        if (!old?.view) return old;
+        return {
+          ...old,
+          view: { ...old.view, filters: filter },
+        };
+      });
+
+      return { previousData };
     },
-    onError: (error) => {
-      if (viewConfig) setLocalConfig(viewConfig as ViewConfig);
+    onError: (error, _, context) => {
+      // Revert cache
+      if (context?.previousData) {
+        utils.view.getViewWithColumns.setData(
+          { viewId, tableId },
+          context.previousData,
+        );
+      }
       toast.error(`Failed to update filters: ${error.message}`);
-      void refetch();
     },
   });
 
   const updateSortMutation = api.view.updateSort.useMutation({
     onMutate: async ({ sort }) => {
-      if (localConfig) {
-        setLocalConfig({ ...localConfig, sorts: sort });
-      }
+      await utils.view.getViewWithColumns.cancel({ viewId, tableId });
+
+      const previousData = utils.view.getViewWithColumns.getData({
+        viewId,
+        tableId,
+      });
+
+      utils.view.getViewWithColumns.setData({ viewId, tableId }, (old) => {
+        if (!old?.view) return old;
+        return {
+          ...old,
+          view: { ...old.view, sorts: sort },
+        };
+      });
+
+      return { previousData };
     },
-    onError: (error) => {
-      if (viewConfig) setLocalConfig(viewConfig as ViewConfig);
+    onError: (error, _, context) => {
+      if (context?.previousData) {
+        utils.view.getViewWithColumns.setData(
+          { viewId, tableId },
+          context.previousData,
+        );
+      }
       toast.error(`Failed to update sorting: ${error.message}`);
-      void refetch();
     },
   });
 
   const updateHiddenColumnsMutation = api.view.updateHiddenColumn.useMutation({
     onMutate: async ({ hiddenColumns }) => {
-      if (localConfig) {
-        setLocalConfig({ ...localConfig, hiddenColumns });
-      }
+      await utils.view.getViewWithColumns.cancel({ viewId, tableId });
+
+      const previousData = utils.view.getViewWithColumns.getData({
+        viewId,
+        tableId,
+      });
+
+      utils.view.getViewWithColumns.setData({ viewId, tableId }, (old) => {
+        if (!old?.view) return old;
+        return {
+          ...old,
+          view: { ...old.view, hiddenColumns },
+        };
+      });
+
+      return { previousData };
     },
-    onError: (error) => {
-      if (viewConfig) setLocalConfig(viewConfig as ViewConfig);
+    onError: (error, _, context) => {
+      if (context?.previousData) {
+        utils.view.getViewWithColumns.setData(
+          { viewId, tableId },
+          context.previousData,
+        );
+      }
       toast.error(`Failed to update column visibility: ${error.message}`);
-      void refetch();
     },
   });
 
-  // Sync local state with server data
-  useEffect(() => {
-    if (viewConfig) {
-      setLocalConfig(viewConfig as ViewConfig);
-    }
-  }, [viewConfig]);
-
-  // Processed data for table queries
+  // Processed data for table queries - use viewConfig directly from cache
   const activeFilters = useMemo(() => {
-    if (!localConfig?.filters) return [];
-    return localConfig.filters.filter((filter) => {
+    if (!viewConfig?.filters) return [];
+    return viewConfig.filters.filter((filter) => {
       if (!operatorRequiresValue(filter.operator)) return true;
       return filter.value.trim() !== "";
     });
-  }, [localConfig?.filters]);
+  }, [viewConfig?.filters]);
 
   const activeSorts = useMemo(() => {
-    return localConfig?.sorts ?? [];
-  }, [localConfig?.sorts]);
+    return viewConfig?.sorts ?? [];
+  }, [viewConfig?.sorts]);
 
-  const visibleColumns = useMemo(() => {
-    if (!localConfig?.hiddenColumns) return columns;
-    return columns.filter((col) => !localConfig.hiddenColumns.includes(col.id));
-  }, [columns, localConfig?.hiddenColumns]);
+  // UI data (includes incomplete filters)
+  const allFilters = useMemo(() => {
+    if (!viewConfig?.filters) return [];
+    return viewConfig.filters;
+  }, [viewConfig?.filters]);
 
   // Actions
   const updateFilters = useCallback(
@@ -162,26 +211,6 @@ export function useViewConfig({
     [viewId, updateHiddenColumnsMutation, columns],
   );
 
-  const toggleColumnVisibility = useCallback(
-    (columnId: string) => {
-      if (!localConfig) return;
-
-      const column = columns.find((col) => col.id === columnId);
-      if (column?.is_primary) {
-        toast.error("Cannot hide primary field");
-        return;
-      }
-
-      const currentHidden = localConfig.hiddenColumns;
-      const newHidden = currentHidden.includes(columnId)
-        ? currentHidden.filter((id) => id !== columnId)
-        : [...currentHidden, columnId];
-
-      updateHiddenColumns(newHidden);
-    },
-    [localConfig, columns, updateHiddenColumns],
-  );
-
   const showAllColumns = useCallback(() => {
     updateHiddenColumns([]);
   }, [updateHiddenColumns]);
@@ -194,16 +223,16 @@ export function useViewConfig({
   }, [columns, updateHiddenColumns]);
 
   return {
-    viewConfig: localConfig,
+    viewConfig,
     isLoading,
     error: queryError?.message ?? null,
+    columns,
     activeFilters,
     activeSorts,
-    visibleColumns,
+    allFilters,
     updateFilters,
     updateSorts,
     updateHiddenColumns,
-    toggleColumnVisibility,
     showAllColumns,
     hideAllColumns,
   };
