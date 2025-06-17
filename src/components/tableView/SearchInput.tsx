@@ -8,25 +8,23 @@ import {
   PopoverTrigger,
 } from "~/components/ui/popover";
 import type { SearchNavigationState } from "~/hooks/useTableSearch";
-import type {
-  SearchMatch as BackendSearchMatch,
-  SearchStats,
-} from "~/hooks/useTableData";
+import type { SearchMatch as BackendSearchMatch } from "~/hooks/useTableData";
+import { useSearchStats } from "~/hooks/useSearchStats";
 
 interface SearchInputProps {
+  tableId: string;
   onChange: (value: string) => void;
   disabled?: boolean;
   backendSearchMatches?: BackendSearchMatch[];
-  searchStats?: SearchStats;
   onSearchMatches?: (navigationState: SearchNavigationState) => void;
   onInvalidateTableData?: () => void;
 }
 
 export function SearchInput({
+  tableId,
   onChange,
   disabled = false,
   backendSearchMatches = [],
-  searchStats,
   onSearchMatches,
   onInvalidateTableData,
 }: SearchInputProps) {
@@ -53,6 +51,12 @@ export function SearchInput({
     onSearchMatches,
     backendSearchMatches,
     onInvalidateTableData,
+  });
+
+  // Get search stats directly from hook
+  const { searchStats } = useSearchStats({
+    tableId,
+    search: searchValue,
   });
 
   // Focus management - maintain focus during search operations

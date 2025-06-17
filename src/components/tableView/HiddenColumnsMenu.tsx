@@ -3,25 +3,36 @@ import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { cn } from "~/lib/utils";
-import { useState, useCallback } from "react";
-import type { TableColumn } from "~/hooks/useTableData";
+import { useState, useCallback, useMemo } from "react";
+import { useViewConfig } from "~/hooks/useViewConfig";
 
 interface HiddenColumnsMenuProps {
-  columns: TableColumn[];
-  hiddenColumns: string[];
-  onSetHiddenColumns: (columns: string[]) => void;
-  onShowAllColumns: () => void;
-  onHideAllColumns: () => void;
+  tableId: string;
+  viewId: string;
 }
 
 export default function HiddenColumnsMenu({
-  columns,
-  hiddenColumns,
-  onSetHiddenColumns,
-  onShowAllColumns,
-  onHideAllColumns,
+  tableId,
+  viewId,
 }: HiddenColumnsMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
+
+  // Get data directly from hook
+  const {
+    columns,
+    viewConfig,
+    updateHiddenColumns,
+    showAllColumns,
+    hideAllColumns,
+  } = useViewConfig({
+    viewId,
+    tableId,
+  });
+
+  const hiddenColumns = useMemo(
+    () => viewConfig?.hiddenColumns ?? [],
+    [viewConfig],
+  );
 
   // Filter out primary columns since they can never be hidden
   const hideableColumns = columns.filter((column) => !column.is_primary);
@@ -40,27 +51,27 @@ export default function HiddenColumnsMenu({
         newHiddenColumns = [...hiddenColumns, columnId];
       }
 
-      onSetHiddenColumns(newHiddenColumns);
+      updateHiddenColumns(newHiddenColumns);
     },
-    [hiddenColumns, onSetHiddenColumns],
+    [hiddenColumns, updateHiddenColumns],
   );
 
   const handleHideAll = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      onHideAllColumns();
+      hideAllColumns();
     },
-    [onHideAllColumns],
+    [hideAllColumns],
   );
 
   const handleShowAll = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      onShowAllColumns();
+      showAllColumns();
     },
-    [onShowAllColumns],
+    [showAllColumns],
   );
 
   return (

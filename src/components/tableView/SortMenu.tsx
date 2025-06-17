@@ -10,112 +10,54 @@ import {
   Hash,
 } from "lucide-react";
 import { cn } from "~/lib/utils";
-import { useState, useCallback, useEffect } from "react";
-import type { TableColumn } from "~/hooks/useTableData";
+import { useState } from "react";
 import { SortMenuLoadingState } from "./SortMenuLoadingState";
 import type { ColumnHighlight } from "~/types/sorting";
-
-export interface SortConfig {
-  id: string;
-  desc: boolean;
-}
+import { useViewConfig } from "~/hooks/useViewConfig";
+import { useSortLogic } from "~/hooks/useSortLogic";
 
 interface SortMenuProps {
-  columns: TableColumn[];
-  sorting: SortConfig[];
-  onSortingChange: (sorting: SortConfig[]) => void;
+  tableId: string;
+  viewId: string;
   onHighlightChange?: (highlights: ColumnHighlight[]) => void;
   onInvalidateTableData?: () => void;
 }
 
 export default function SortMenu({
-  columns,
-  sorting,
-  onSortingChange,
+  tableId,
+  viewId,
   onHighlightChange,
   onInvalidateTableData,
 }: SortMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [addSortOpen, setAddSortOpen] = useState(false);
-  const [columnSelectorOpen, setColumnSelectorOpen] = useState<
-    Record<string, boolean>
-  >({});
-  const [directionSelectorOpen, setDirectionSelectorOpen] = useState<
-    Record<string, boolean>
-  >({});
 
-  // Filter columns that can be sorted (exclude hidden columns)
-  const sortableColumns = columns;
+  // Get data directly from hook
+  const { columns, activeSorts, updateSorts } = useViewConfig({
+    viewId,
+    tableId,
+  });
 
-  // Update column highlights when sorting changes
-  useEffect(() => {
-    if (!onHighlightChange) return;
-
-    const highlights: ColumnHighlight[] = sorting.map((sort) => ({
-      columnId: sort.id,
-      type: "sort",
-      color: "#fff2ea",
-    }));
-
-    onHighlightChange(highlights);
-  }, [sorting, onHighlightChange]);
-
-  const handleAddSort = useCallback(
-    (columnId: string) => {
-      const newSort: SortConfig = { id: columnId, desc: false };
-      onSortingChange([...sorting, newSort]);
-      setAddSortOpen(false);
-    },
-    [sorting, onSortingChange],
-  );
-
-  const handleRemoveSort = useCallback(
-    (columnId: string) => {
-      onSortingChange(sorting.filter((sort) => sort.id !== columnId));
-    },
-    [sorting, onSortingChange],
-  );
-
-  const handleClearAll = useCallback(() => {
-    onSortingChange([]);
-    if (onInvalidateTableData) {
-      onInvalidateTableData();
-    }
-  }, [onSortingChange, onInvalidateTableData]);
-
-  const handleChangeSort = useCallback(
-    (oldColumnId: string, newColumnId: string) => {
-      onSortingChange(
-        sorting.map((sort) =>
-          sort.id === oldColumnId ? { ...sort, id: newColumnId } : sort,
-        ),
-      );
-
-      // Close the popover
-      setColumnSelectorOpen((prev) => ({
-        ...prev,
-        [oldColumnId]: false,
-      }));
-    },
-    [sorting, onSortingChange],
-  );
-
-  const handleToggleSortDirection = useCallback(
-    (columnId: string) => {
-      onSortingChange(
-        sorting.map((sort) =>
-          sort.id === columnId ? { ...sort, desc: !sort.desc } : sort,
-        ),
-      );
-
-      // Close the popover
-      setDirectionSelectorOpen((prev) => ({
-        ...prev,
-        [columnId]: false,
-      }));
-    },
-    [sorting, onSortingChange],
-  );
+  // Use sort logic hook for all sorting functionality
+  const {
+    columnSelectorOpen,
+    setColumnSelectorOpen,
+    directionSelectorOpen,
+    setDirectionSelectorOpen,
+    validSorts,
+    sortableColumns,
+    handleAddSort,
+    handleRemoveSort,
+    handleClearAll,
+    handleChangeSort,
+    handleToggleSortDirection,
+  } = useSortLogic({
+    columns,
+    activeSorts,
+    updateSorts,
+    onHighlightChange,
+    onInvalidateTableData,
+  });
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
@@ -125,17 +67,17 @@ export default function SortMenu({
           size="sm"
           className={cn(
             "h-8 gap-1.5 rounded px-2 text-[13px] font-normal",
-            sorting.length > 0
+            validSorts.length > 0
               ? "bg-[#FFE0CC] text-gray-700 hover:border-rose-200 hover:shadow-[inset_0px_0px_0px_2px_rgba(0,0,0,0.1)]"
               : "text-gray-700 hover:bg-gray-100",
           )}
           title="Sort button"
         >
           <ArrowUpDown className="h-4 w-4" />
-          {sorting.length === 0
+          {validSorts.length === 0
             ? "Sort"
-            : `Sorted by ${sorting.length} ${
-                sorting.length === 1 ? "field" : "fields"
+            : `Sorted by ${validSorts.length} ${
+                validSorts.length === 1 ? "field" : "fields"
               }`}
         </Button>
       </PopoverTrigger>
@@ -151,7 +93,7 @@ export default function SortMenu({
         </div>
 
         <div className="space-y-2">
-          {sorting.map((sort) => {
+          {validSorts.map((sort) => {
             const column = columns.find((col) => col.id === sort.id);
             if (!column) return null;
 
@@ -192,7 +134,7 @@ export default function SortMenu({
                         {sortableColumns
                           .filter(
                             (col) =>
-                              !sorting.some((s) => s.id === col.id) ||
+                              !activeSorts.some((s) => s.id === col.id) ||
                               col.id === sort.id,
                           )
                           .map((col) => (
@@ -294,7 +236,7 @@ export default function SortMenu({
 
         {columns.length === 0 ? (
           <SortMenuLoadingState />
-        ) : sorting.length === 0 ? (
+        ) : validSorts.length === 0 ? (
           <div className="space-y-1">
             {sortableColumns.map((column) => (
               <button
@@ -324,7 +266,7 @@ export default function SortMenu({
                 className="mt-3 h-7 gap-2 text-xs"
                 hidden={
                   sortableColumns.filter(
-                    (col) => !sorting.some((sort) => sort.id === col.id),
+                    (col) => !activeSorts.some((sort) => sort.id === col.id),
                   ).length === 0
                 }
               >
@@ -337,14 +279,16 @@ export default function SortMenu({
             <PopoverContent align="start" className="w-[200px] p-1">
               <div className="space-y-1">
                 {sortableColumns
-                  .filter((col) => !sorting.some((sort) => sort.id === col.id))
+                  .filter(
+                    (col) => !activeSorts.some((sort) => sort.id === col.id),
+                  )
                   .map((column) => (
                     <button
                       key={column.id}
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        handleAddSort(column.id);
+                        handleAddSort(column.id, () => setAddSortOpen(false));
                       }}
                       className="flex h-7 w-full items-center gap-2 rounded-sm px-2 text-xs hover:bg-gray-100"
                     >
@@ -361,7 +305,7 @@ export default function SortMenu({
           </Popover>
         )}
 
-        {sorting.length > 0 && (
+        {validSorts.length > 0 && (
           <div>
             <div className="my-2 border-t border-gray-200"></div>
             <Button

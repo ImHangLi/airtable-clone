@@ -29,17 +29,6 @@ export function DraftRow({
   const rowRef = useRef<HTMLDivElement>(null);
   const firstInputRef = useRef<HTMLInputElement>(null);
 
-  // Initialize draft data for visible columns
-  useEffect(() => {
-    const initialData: Record<string, string | number> = {};
-    columns.forEach((column) => {
-      if (columnVisibility[column.id]) {
-        initialData[column.id] = "";
-      }
-    });
-    setDraftData(initialData);
-  }, [columns, columnVisibility]);
-
   // Focus the first cell when component mounts and auto-focus first cell
   useEffect(() => {
     // Small delay to ensure component is rendered

@@ -18,35 +18,35 @@ import { SearchInput } from "./SearchInput";
 import SortMenu from "./SortMenu";
 import FilterMenu from "./FilterMenu";
 import HiddenColumnsMenu from "./HiddenColumnsMenu";
-import type { FilterConfig } from "~/types/filtering";
-import type { SortConfig, ColumnHighlight } from "~/types/sorting";
+import type { ColumnHighlight } from "~/types/sorting";
 import type { SearchNavigationState } from "~/hooks/useTableSearch";
-import { useViewConfig } from "~/hooks/useViewConfig";
-import { useViewActions } from "~/hooks/useViewActions";
+import { useViews } from "~/hooks/useViews";
 import { ViewContextMenu } from "./ViewContextMenu";
-import { useSearchStats } from "~/hooks/useSearchStats";
 
 interface ViewControlProps {
+  // Core identifiers only
   tableId: string;
   baseId: string;
   currentViewId: string;
+
+  // Table data (still needed for loading states)
   tableData?: TableData;
   loadingStatus?: string | null;
+
+  // Search state (controlled by parent for search navigation)
   searchQuery?: string;
   setSearchQuery: (query: string) => void;
-  sorting: SortConfig[];
-  onSortingChange: (sorting: SortConfig[]) => void;
-  filtering: FilterConfig[];
-  onFilteringChange: (filtering: FilterConfig[]) => void;
-  onSortHighlightChange?: (highlights: ColumnHighlight[]) => void;
-  onFilterHighlightChange?: (highlights: ColumnHighlight[]) => void;
-  hiddenColumns: string[];
-  onSetHiddenColumns: (columns: string[]) => void;
-  onShowAllColumns: () => void;
-  onHideAllColumns: () => void;
+  onSearchMatches?: (navigationState: SearchNavigationState) => void;
+
+  // UI state
   isViewSideOpen: boolean;
   onToggleViewSide: () => void;
-  onSearchMatches?: (navigationState: SearchNavigationState) => void;
+
+  // Highlight callbacks (for table highlighting)
+  onSortHighlightChange?: (highlights: ColumnHighlight[]) => void;
+  onFilterHighlightChange?: (highlights: ColumnHighlight[]) => void;
+
+  // Data management
   onInvalidateTableData?: () => void;
 }
 
@@ -56,66 +56,70 @@ export default function ViewControl({
   currentViewId,
   tableData,
   loadingStatus = null,
-  searchQuery,
   setSearchQuery,
-  sorting,
-  onSortingChange,
-  filtering,
-  onFilteringChange,
-  onSortHighlightChange,
-  onFilterHighlightChange,
-  hiddenColumns,
-  onSetHiddenColumns,
-  onShowAllColumns,
-  onHideAllColumns,
+  onSearchMatches,
   isViewSideOpen,
   onToggleViewSide,
-  onSearchMatches,
+  onSortHighlightChange,
+  onFilterHighlightChange,
   onInvalidateTableData,
 }: ViewControlProps) {
   const [isAddingManyRows, setIsAddingManyRows] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{
+    viewId: string;
+    viewName: string;
+    position: { x: number; y: number };
+  } | null>(null);
   const utils = api.useUtils();
 
-  // Use the optimized search stats hook
-  const { searchStats } = useSearchStats({
-    tableId,
-    search: searchQuery,
-  });
-
-  // Get table columns (lightweight query)
-  const { data: tableColumns = [] } = api.column.getColumns.useQuery({
-    tableId,
-  });
-
-  // Use the view config hook for current view info
-  const { viewConfig: currentView } = useViewConfig({
-    viewId: currentViewId,
-    columns: tableColumns,
-  });
-
-  // Use the view actions hook for all view management
-  const {
-    contextMenu,
-    canDeleteView,
-    handleShowContextMenu,
-    handleCloseContextMenu,
-    handleUpdateViewName,
-    handleDeleteView,
-  } = useViewActions({
+  // Only fetch view data that ViewControl directly needs
+  const { currentView, updateViewName, deleteView, canDeleteView } = useViews({
     tableId,
     baseId,
     currentViewId,
   });
+
+  // Context menu handlers
+  const handleShowContextMenu = useCallback(
+    (e: React.MouseEvent, viewId: string, viewName: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setContextMenu({
+        viewId,
+        viewName,
+        position: { x: e.clientX, y: e.clientY },
+      });
+    },
+    [],
+  );
+
+  const handleCloseContextMenu = useCallback(() => {
+    setContextMenu(null);
+  }, []);
+
+  const handleUpdateViewName = useCallback(
+    async (viewName: string) => {
+      if (!contextMenu) return;
+      await updateViewName(contextMenu.viewId, viewName);
+      setContextMenu(null);
+    },
+    [contextMenu, updateViewName],
+  );
+
+  const handleDeleteView = useCallback(
+    async (viewId: string) => {
+      await deleteView(viewId);
+      setContextMenu(null);
+    },
+    [deleteView],
+  );
 
   // Add many rows mutation
   const addManyRowsMutation = api.row.addManyRows.useMutation({
     onSuccess: () => {
       setIsAddingManyRows(false);
       toast.success("Successfully added 100k rows!");
-      // Invalidate all queries for this table to refresh data across all views
-      void utils.data.getInfiniteTableData.invalidate({
-        tableId,
-      });
+      void utils.data.getInfiniteTableData.invalidate({ tableId });
     },
     onError: (error) => {
       toast.error(`Error adding rows: ${error.message}`);
@@ -123,7 +127,6 @@ export default function ViewControl({
     },
   });
 
-  // Handle add 100k rows
   const handleAddManyRows = useCallback(() => {
     setIsAddingManyRows(true);
     addManyRowsMutation.mutate({ tableId, baseId });
@@ -153,33 +156,24 @@ export default function ViewControl({
             className="h-8 gap-1.5 rounded px-2 text-sm font-normal text-gray-700 hover:bg-gray-100"
             title="Current view - right click to rename or delete"
             onClick={(e) => {
-              if (currentView) {
-                handleShowContextMenu(e, currentView.id, currentView.name);
+              if (currentView?.name) {
+                handleShowContextMenu(e, currentViewId, currentView.name);
               }
             }}
           >
             <Grid className="h-4 w-4 text-blue-600" />
-            <span className="text-[13px] text-black">
-              {currentView?.name ?? "Grid view"}
-            </span>
+            <span className="text-[13px] text-black">{currentView?.name}</span>
             <Users className="h-4 w-4" />
             <ChevronDown className="h-4 w-4" />
           </Button>
         </div>
 
         <div className="flex items-center gap-1.5">
-          <HiddenColumnsMenu
-            columns={tableData?.columns ?? []}
-            hiddenColumns={hiddenColumns}
-            onSetHiddenColumns={onSetHiddenColumns}
-            onShowAllColumns={onShowAllColumns}
-            onHideAllColumns={onHideAllColumns}
-          />
+          <HiddenColumnsMenu tableId={tableId} viewId={currentViewId} />
 
           <FilterMenu
-            columns={tableData?.columns ?? []}
-            filtering={filtering}
-            onFilteringChange={onFilteringChange}
+            tableId={tableId}
+            viewId={currentViewId}
             onHighlightChange={onFilterHighlightChange}
             onInvalidateTableData={onInvalidateTableData}
           />
@@ -194,9 +188,8 @@ export default function ViewControl({
           </Button>
 
           <SortMenu
-            columns={tableData?.columns ?? []}
-            sorting={sorting}
-            onSortingChange={onSortingChange}
+            tableId={tableId}
+            viewId={currentViewId}
             onHighlightChange={onSortHighlightChange}
             onInvalidateTableData={onInvalidateTableData}
           />
@@ -222,7 +215,7 @@ export default function ViewControl({
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth="4"
-                d="m16 35l-6 6l-6-6m12-22l-6-6l-6 6m6-6v34M44 9H22m14 10H22m22 10H22m14 10H22"
+                d="m16 35l-6 6l-6 6m12-22l-6-6l-6 6m6-6v34M44 9H22m14 10H22m22 10H22m14 10H22"
               />
             </svg>
           </Button>
@@ -240,7 +233,6 @@ export default function ViewControl({
         {/* Action buttons section */}
         <div className="h-4 w-px bg-gray-200" />
         <div className="flex items-center gap-0.5">
-          {/* Add 100k Rows Button */}
           <Button
             variant="ghost"
             size="sm"
@@ -258,7 +250,6 @@ export default function ViewControl({
         <div className="flex-1" />
 
         {/* Loading indicators with priority order */}
-        {/* Show specific operation status (highest priority) */}
         {loadingStatus && (
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -266,7 +257,6 @@ export default function ViewControl({
           </div>
         )}
 
-        {/* Show adding many rows status */}
         {!loadingStatus && isAddingManyRows && (
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -274,7 +264,6 @@ export default function ViewControl({
           </div>
         )}
 
-        {/* Show general loading (medium priority) */}
         {!loadingStatus &&
           !isAddingManyRows &&
           tableData?.isFetching &&
@@ -285,7 +274,6 @@ export default function ViewControl({
             </div>
           )}
 
-        {/* Show loading more data (lowest priority) */}
         {!loadingStatus &&
           !isAddingManyRows &&
           !tableData?.isFetching &&
@@ -297,10 +285,10 @@ export default function ViewControl({
           )}
 
         <SearchInput
+          tableId={tableId}
           onChange={setSearchQuery}
           disabled={!!loadingStatus}
           backendSearchMatches={tableData?.searchMatches ?? []}
-          searchStats={searchStats ?? undefined}
           onSearchMatches={onSearchMatches}
           onInvalidateTableData={onInvalidateTableData}
         />

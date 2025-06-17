@@ -22,7 +22,7 @@ import { api } from "~/trpc/react";
 import { toast } from "sonner";
 import { ViewContextMenu } from "./ViewContextMenu";
 import { setLastViewedView } from "~/utils/lastViewedView";
-import { useViewActions } from "~/hooks/useViewActions";
+import { useViews } from "~/hooks/useViews";
 import { Separator } from "../ui/separator";
 
 interface ViewSideProps {
@@ -39,17 +39,52 @@ function ViewSide({ tableId, baseId, currentViewId }: ViewSideProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const formRef = useRef<HTMLDivElement>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(true);
-  // Use the shared view actions hook
-  const {
-    views,
-    contextMenu,
-    canDeleteView,
-    isLoading,
-    handleShowContextMenu,
-    handleCloseContextMenu,
-    handleUpdateViewName,
-    handleDeleteView,
-  } = useViewActions({ tableId, baseId, currentViewId });
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{
+    viewId: string;
+    viewName: string;
+    position: { x: number; y: number };
+  } | null>(null);
+
+  // Use the views hook
+  const { views, isLoading, canDeleteView, updateViewName, deleteView } =
+    useViews({ tableId, baseId, currentViewId });
+
+  // Context menu handlers
+  const handleShowContextMenu = useCallback(
+    (e: React.MouseEvent, viewId: string, viewName: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setContextMenu({
+        viewId,
+        viewName,
+        position: { x: e.clientX, y: e.clientY },
+      });
+    },
+    [],
+  );
+
+  const handleCloseContextMenu = useCallback(() => {
+    setContextMenu(null);
+  }, []);
+
+  const handleUpdateViewName = useCallback(
+    async (viewName: string) => {
+      if (!contextMenu) return;
+      await updateViewName(contextMenu.viewId, viewName);
+      setContextMenu(null);
+    },
+    [contextMenu, updateViewName],
+  );
+
+  const handleDeleteView = useCallback(
+    async (viewId: string) => {
+      await deleteView(viewId);
+      setContextMenu(null);
+    },
+    [deleteView],
+  );
 
   // Create view mutation - keep this in ViewSide since it's specific to this component
   const utils = api.useUtils();
