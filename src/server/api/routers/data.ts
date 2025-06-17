@@ -41,6 +41,179 @@ const searchStatsSchema = z.object({
   search: z.string().min(1).max(100),
 });
 
+// --- Helper types & functions added for clarity ---------------------------------
+// Helper aliases to avoid long generic names
+type FilterConfig = z.infer<typeof filterConfigSchema>;
+type SortConfig = z.infer<typeof sortConfigSchema>;
+
+/**
+ * Build an array of SQL expressions (to be AND-combined) from the provided filter list.
+ * The logic is identical to the old inline implementation but wrapped in a pure function
+ * so that the main resolver reads like a high-level recipe instead of a 200-line monster.
+ */
+export function buildFilterConditions(
+  filtering: FilterConfig[] | undefined,
+  columnMap: Map<string, typeof columns.$inferSelect>,
+): SQL[] {
+  const expressions: SQL[] = [];
+
+  if (!filtering || filtering.length === 0) return expressions;
+
+  // Keep logic parity with the previous implementation
+  const sorted = [...filtering].sort((a, b) => a.order - b.order);
+
+  const positive: typeof sorted = [];
+  const negative: typeof sorted = [];
+
+  for (const f of sorted) {
+    const col = columnMap.get(f.columnId);
+    if (!col) continue;
+
+    const isNegative = ["not_equals", "not_contains", "is_empty"].includes(
+      f.operator,
+    );
+    (isNegative ? negative : positive).push(f);
+  }
+
+  // ----- Positive filters (EXISTS / aggregation trick) -----------------------
+  if (positive.length > 0) {
+    const subConditions: SQL[] = [];
+
+    for (const f of positive) {
+      const column = columnMap.get(f.columnId);
+      if (!column) continue;
+
+      const isNumber = column.type === "number";
+      const { operator, value } = f;
+      let cond: SQL | null = null;
+
+      switch (operator) {
+        case "is_not_empty":
+          cond = sql`(c.column_id = ${f.columnId} AND (${isNumber ? sql`c.value_number IS NOT NULL` : sql`c.value_text IS NOT NULL AND c.value_text != ''`}))`;
+          break;
+        case "equals":
+          if (isNumber) {
+            const num = parseFloat(value);
+            if (!isNaN(num))
+              cond = sql`(c.column_id = ${f.columnId} AND c.value_number = ${num})`;
+          } else {
+            cond = sql`(c.column_id = ${f.columnId} AND c.value_text = ${value})`;
+          }
+          break;
+        case "contains":
+          if (!isNumber) {
+            cond = sql`(c.column_id = ${f.columnId} AND c.value_text ILIKE ${`%${value}%`})`;
+          }
+          break;
+        case "greater_than":
+          if (isNumber) {
+            const num = parseFloat(value);
+            if (!isNaN(num))
+              cond = sql`(c.column_id = ${f.columnId} AND c.value_number > ${num})`;
+          }
+          break;
+        case "less_than":
+          if (isNumber) {
+            const num = parseFloat(value);
+            if (!isNaN(num))
+              cond = sql`(c.column_id = ${f.columnId} AND c.value_number < ${num})`;
+          }
+          break;
+      }
+      if (cond) subConditions.push(cond);
+    }
+
+    if (subConditions.length > 0) {
+      // Combine with proper logical operators (respect UI order)
+      const combined = subConditions.reduce((acc, curr, idx) => {
+        if (idx === 0) return curr;
+        const op = positive[idx]?.logicalOperator?.toLowerCase() ?? "and";
+        return op === "or" ? sql`${acc} OR ${curr}` : sql`${acc} OR ${curr}`; // aggregation approach still uses OR in the inner query
+      });
+
+      const hasOr = positive.some((p) => p.logicalOperator === "or");
+      if (hasOr || positive.length === 1) {
+        expressions.push(
+          sql`EXISTS (SELECT 1 FROM ${cells} c WHERE c.row_id = ${rows.id} AND (${combined}))`,
+        );
+      } else {
+        expressions.push(
+          sql`${positive.length} = (SELECT COUNT(DISTINCT c.column_id) FROM ${cells} c WHERE c.row_id = ${rows.id} AND (${combined}))`,
+        );
+      }
+    }
+  }
+
+  // ----- Negative filters (NOT EXISTS) ---------------------------------------
+  for (const f of negative) {
+    const column = columnMap.get(f.columnId);
+    if (!column) continue;
+    const isNumber = column.type === "number";
+    const { operator, value } = f;
+    let cond: SQL | null = null;
+
+    switch (operator) {
+      case "is_empty":
+        cond = sql`NOT EXISTS (SELECT 1 FROM ${cells} c WHERE c.row_id = ${rows.id} AND c.column_id = ${f.columnId} AND (${isNumber ? sql`c.value_number IS NOT NULL` : sql`c.value_text IS NOT NULL AND c.value_text != ''`}))`;
+        break;
+      case "not_equals":
+        if (isNumber) {
+          const num = parseFloat(value);
+          if (!isNaN(num))
+            cond = sql`NOT EXISTS (SELECT 1 FROM ${cells} c WHERE c.row_id = ${rows.id} AND c.column_id = ${f.columnId} AND c.value_number = ${num})`;
+        } else {
+          cond = sql`NOT EXISTS (SELECT 1 FROM ${cells} c WHERE c.row_id = ${rows.id} AND c.column_id = ${f.columnId} AND c.value_text = ${value})`;
+        }
+        break;
+      case "not_contains":
+        if (!isNumber)
+          cond = sql`NOT EXISTS (SELECT 1 FROM ${cells} c WHERE c.row_id = ${rows.id} AND c.column_id = ${f.columnId} AND c.value_text ILIKE ${`%${value}%`})`;
+        break;
+    }
+    if (cond) expressions.push(cond);
+  }
+
+  return expressions;
+}
+
+/**
+ * Build ORDER BY clauses for the provided sort config array.
+ */
+export function buildSortClauses(
+  sorting: SortConfig[] | undefined,
+  columnMap: Map<string, typeof columns.$inferSelect>,
+): SQL[] {
+  const clauses: SQL[] = [];
+
+  if (!sorting || sorting.length === 0) return clauses;
+
+  for (const s of sorting) {
+    const column = columnMap.get(s.id);
+    if (!column) continue;
+
+    let sub: SQL;
+    if (column.type === "number") {
+      sub = sql`(
+        SELECT COALESCE(c.value_number, 0)
+        FROM ${cells} c
+        WHERE c.row_id = ${rows.id} AND c.column_id = ${s.id}
+        LIMIT 1
+      )`;
+    } else {
+      sub = sql`(
+        SELECT COALESCE(c.value_text, '')
+        FROM ${cells} c
+        WHERE c.row_id = ${rows.id} AND c.column_id = ${s.id}
+        LIMIT 1
+      )`;
+    }
+    clauses.push(s.desc ? desc(sub) : asc(sub));
+  }
+
+  return clauses;
+}
+// --- End helper section --------------------------------------------------------
+
 export const dataRouter = createTRPCRouter({
   getSearchStats: protectedProcedure
     .input(searchStatsSchema)
@@ -69,7 +242,7 @@ export const dataRouter = createTRPCRouter({
           .innerJoin(tables, eq(rows.table_id, tables.id))
           .where(
             and(
-              eq(tables.id, tableId), // Search across entire base
+              eq(tables.id, tableId),
               sql`(
                 (${cells.value_text} ILIKE ${`%${searchTerm}%`} AND ${cells.value_text} IS NOT NULL AND ${cells.value_text} != '') OR
                 (CAST(${cells.value_number} AS TEXT) ILIKE ${`%${searchTerm}%`} AND ${cells.value_number} IS NOT NULL)
@@ -140,239 +313,11 @@ export const dataRouter = createTRPCRouter({
         // Build base conditions
         const baseConditions: SQL[] = [eq(rows.table_id, tableId)];
 
-        // Add filter conditions with proper OR/AND logic support
-        if (filtering && filtering.length > 0) {
-          // Sort filters by order for consistent application
-          const sortedFilters = [...filtering].sort(
-            (a, b) => a.order - b.order,
-          );
+        // Build filter SQL expressions using helper
+        baseConditions.push(...buildFilterConditions(filtering, columnMap));
 
-          // Separate positive and negative filters for optimization
-          const positiveFilters: typeof sortedFilters = [];
-          const negativeFilters: typeof sortedFilters = [];
-
-          for (const filter of sortedFilters) {
-            const column = columnMap.get(filter.columnId);
-            if (!column) continue;
-
-            // Classify filters as positive (EXISTS) or negative (NOT EXISTS)
-            const isNegative = [
-              "not_equals",
-              "not_contains",
-              "is_empty",
-            ].includes(filter.operator);
-
-            if (isNegative) {
-              negativeFilters.push(filter);
-            } else {
-              positiveFilters.push(filter);
-            }
-          }
-
-          // Handle positive filters with optimized approach that supports OR logic
-          if (positiveFilters.length > 0) {
-            // Build filter conditions for the optimized approach
-            const filterConditions: SQL[] = [];
-
-            for (const filter of positiveFilters) {
-              const column = columnMap.get(filter.columnId);
-              if (!column) continue;
-
-              const { operator, value } = filter;
-              const isNumberColumn = column.type === "number";
-
-              let condition: SQL | null = null;
-
-              switch (operator) {
-                case "is_not_empty":
-                  condition = sql`(
-                    c.column_id = ${filter.columnId} AND (
-                      ${isNumberColumn ? sql`c.value_number IS NOT NULL` : sql`c.value_text IS NOT NULL AND c.value_text != ''`}
-                    )
-                  )`;
-                  break;
-
-                case "equals":
-                  if (isNumberColumn) {
-                    const numValue = parseFloat(value);
-                    if (!isNaN(numValue)) {
-                      condition = sql`(c.column_id = ${filter.columnId} AND c.value_number = ${numValue})`;
-                    }
-                  } else {
-                    condition = sql`(c.column_id = ${filter.columnId} AND c.value_text = ${value})`;
-                  }
-                  break;
-
-                case "contains":
-                  if (!isNumberColumn) {
-                    const pattern = `%${value}%`;
-                    condition = sql`(c.column_id = ${filter.columnId} AND c.value_text ILIKE ${pattern})`;
-                  }
-                  break;
-
-                case "greater_than":
-                  if (isNumberColumn) {
-                    const numValue = parseFloat(value);
-                    if (!isNaN(numValue)) {
-                      condition = sql`(c.column_id = ${filter.columnId} AND c.value_number > ${numValue})`;
-                    }
-                  }
-                  break;
-
-                case "less_than":
-                  if (isNumberColumn) {
-                    const numValue = parseFloat(value);
-                    if (!isNaN(numValue)) {
-                      condition = sql`(c.column_id = ${filter.columnId} AND c.value_number < ${numValue})`;
-                    }
-                  }
-                  break;
-              }
-
-              if (condition) {
-                filterConditions.push(condition);
-              }
-            }
-
-            // Use optimized EXISTS with proper OR/AND logic
-            if (filterConditions.length > 0) {
-              // Build the combined condition with proper logical operators
-              const combinedCondition = filterConditions.reduce(
-                (acc, condition, index) => {
-                  if (index === 0) return condition;
-
-                  // Use the logical operator from the current filter
-                  const currentFilter = positiveFilters[index];
-                  const logicalOp =
-                    currentFilter?.logicalOperator?.toLowerCase() ?? "and";
-
-                  if (logicalOp === "or") {
-                    return sql`${acc} OR ${condition}`;
-                  } else {
-                    return sql`${acc} OR ${condition}`; // For aggregation approach, we use OR and count
-                  }
-                },
-              );
-
-              // Determine if we need AND logic (all filters must match) or OR logic (any filter can match)
-              const hasOrLogic = positiveFilters.some(
-                (f) => f.logicalOperator === "or",
-              );
-
-              if (hasOrLogic || positiveFilters.length === 1) {
-                // Simple EXISTS with OR conditions
-                baseConditions.push(sql`EXISTS (
-                  SELECT 1 FROM ${cells} c
-                  WHERE c.row_id = ${rows.id}
-                  AND (${combinedCondition})
-                )`);
-              } else {
-                // For AND logic, use aggregation to ensure all filters match
-                const requiredMatches = positiveFilters.length;
-                baseConditions.push(sql`${requiredMatches} = (
-                  SELECT COUNT(DISTINCT c.column_id)
-                  FROM ${cells} c
-                  WHERE c.row_id = ${rows.id}
-                  AND (${combinedCondition})
-                )`);
-              }
-            }
-          }
-
-          // Handle negative filters with individual EXISTS (these are harder to optimize)
-          for (const filter of negativeFilters) {
-            const column = columnMap.get(filter.columnId);
-            if (!column) continue;
-
-            const { operator, value } = filter;
-            const isNumberColumn = column.type === "number";
-
-            let filterCondition: SQL | null = null;
-
-            switch (operator) {
-              case "is_empty":
-                filterCondition = sql`NOT EXISTS (
-                  SELECT 1 FROM ${cells} c
-                  WHERE c.row_id = ${rows.id}
-                  AND c.column_id = ${filter.columnId}
-                  AND (
-                    ${isNumberColumn ? sql`c.value_number IS NOT NULL` : sql`c.value_text IS NOT NULL AND c.value_text != ''`}
-                  )
-                )`;
-                break;
-
-              case "not_equals":
-                if (isNumberColumn) {
-                  const numValue = parseFloat(value);
-                  if (!isNaN(numValue)) {
-                    filterCondition = sql`NOT EXISTS (
-                      SELECT 1 FROM ${cells} c
-                      WHERE c.row_id = ${rows.id}
-                      AND c.column_id = ${filter.columnId}
-                      AND c.value_number = ${numValue}
-                    )`;
-                  }
-                } else {
-                  filterCondition = sql`NOT EXISTS (
-                    SELECT 1 FROM ${cells} c
-                    WHERE c.row_id = ${rows.id}
-                    AND c.column_id = ${filter.columnId}
-                    AND c.value_text = ${value}
-                  )`;
-                }
-                break;
-
-              case "not_contains":
-                if (!isNumberColumn) {
-                  const pattern = `%${value}%`;
-                  filterCondition = sql`NOT EXISTS (
-                    SELECT 1 FROM ${cells} c
-                    WHERE c.row_id = ${rows.id}
-                    AND c.column_id = ${filter.columnId}
-                    AND c.value_text ILIKE ${pattern}
-                  )`;
-                }
-                break;
-            }
-
-            if (filterCondition) {
-              baseConditions.push(filterCondition);
-            }
-          }
-        }
-
-        // Build optimized sort clauses using CTEs for better performance
-        const sortClauses = [];
-        if (sorting && sorting.length > 0) {
-          for (const sortConfig of sorting) {
-            const column = columnMap.get(sortConfig.id);
-            if (!column) continue;
-
-            if (column.type === "number") {
-              const subquery = sql`(
-                SELECT COALESCE(c.value_number, 0)
-                FROM ${cells} c
-                WHERE c.row_id = ${rows.id}
-                AND c.column_id = ${sortConfig.id}
-                LIMIT 1
-              )`;
-              sortClauses.push(
-                sortConfig.desc ? desc(subquery) : asc(subquery),
-              );
-            } else {
-              const subquery = sql`(
-                SELECT COALESCE(c.value_text, '')
-                FROM ${cells} c
-                WHERE c.row_id = ${rows.id}
-                AND c.column_id = ${sortConfig.id}
-                LIMIT 1
-              )`;
-              sortClauses.push(
-                sortConfig.desc ? desc(subquery) : asc(subquery),
-              );
-            }
-          }
-        }
+        // Build sort clauses using helper
+        const sortClauses = buildSortClauses(sorting, columnMap);
 
         // Add default sorting for consistency
         sortClauses.push(asc(rows.created_at), asc(rows.id));

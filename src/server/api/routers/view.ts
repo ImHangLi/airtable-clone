@@ -2,13 +2,18 @@ import { eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { views } from "~/server/db/schema";
+import { columns, views } from "~/server/db/schema";
 import type { FilterConfig } from "~/types/filtering";
 import type { SortConfig } from "~/types/sorting";
 import { tables } from "~/server/db/schema";
 
 const getViewSchema = z.object({
   viewId: z.string().uuid("Invalid view ID"),
+});
+
+const getViewWithColumnsSchema = z.object({
+  viewId: z.string().uuid("Invalid view ID"),
+  tableId: z.string().uuid("Invalid table ID"),
 });
 
 const updateFilterSchema = z.object({
@@ -50,7 +55,7 @@ const validateViewIntegritySchema = z.object({
 });
 
 export const viewRouter = createTRPCRouter({
-  // Get view (no validation - for backwards compatibility)
+  // Get view
   getView: protectedProcedure
     .input(getViewSchema)
     .query(async ({ ctx, input }) => {
@@ -84,6 +89,52 @@ export const viewRouter = createTRPCRouter({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to get view",
+        });
+      }
+    }),
+
+  getViewWithColumns: protectedProcedure
+    .input(getViewWithColumnsSchema)
+    .query(async ({ ctx, input }) => {
+      try {
+        const [view, tableColumns] = await Promise.all([
+          ctx.db.query.views.findFirst({
+            where: eq(views.id, input.viewId),
+            columns: {
+              id: true,
+              name: true,
+              table_id: true,
+              base_id: true,
+              filters: true,
+              sorts: true,
+              hiddenColumns: true,
+            },
+          }),
+          ctx.db.query.columns.findMany({
+            where: eq(columns.table_id, input.tableId),
+            columns: {
+              id: true,
+              name: true,
+              type: true,
+              is_primary: true,
+            },
+            orderBy: (columns, { asc }) => [asc(columns.position)],
+          }),
+        ]);
+
+        if (!view) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "View not found",
+          });
+        }
+
+        return { view, tableColumns };
+      } catch (error) {
+        console.error("Error getting view with columns:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to get view with columns",
         });
       }
     }),
