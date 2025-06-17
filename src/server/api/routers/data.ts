@@ -124,7 +124,9 @@ export function buildFilterConditions(
     }
 
     if (subConditions.length > 0) {
-      const combined = subConditions.reduce((acc, curr) => sql`${acc} OR ${curr}`);
+      const combined = subConditions.reduce(
+        (acc, curr) => sql`${acc} OR ${curr}`,
+      );
 
       const hasOr = positive.some((p) => p.logicalOperator === "or");
       if (hasOr || positive.length === 1) {
@@ -331,7 +333,12 @@ export const dataRouter = createTRPCRouter({
               updated_at: rows.updated_at,
             })
             .from(rows)
-            .where(and(...baseConditions))
+            .where(
+              and(
+                ...baseConditions,
+                sql`EXISTS (SELECT 1 FROM ${cells} c WHERE c.row_id = ${rows.id} AND (c.value_text ILIKE ${`%${searchTerm}%`} OR c.value_number = ${parseFloat(searchTerm ?? "")}))`,
+              ),
+            )
             .orderBy(...sortClauses)
             .offset(offset)
             .limit(limit + 1), // +1 to check if there's a next page
