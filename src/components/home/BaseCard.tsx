@@ -45,9 +45,6 @@ export function BaseCard({
       }
       toast.error("Failed to delete base. Please try again.");
     },
-    onSettled() {
-      void utils.base.getAllByLastUpdated.invalidate();
-    },
   });
 
   const updateBaseNameMutation = api.base.updateName.useMutation({

@@ -51,28 +51,18 @@ export default function TableViewPage({
     });
 
   useEffect(() => {
-    void utils.view.getView.invalidate({ viewId });
-  }, [viewId, utils]);
+    void utils.view.getViewWithColumns.invalidate({ viewId, tableId });
+  }, [viewId, utils, tableId]);
 
-  // Get table columns with a lightweight query
-  const { data: tableColumns = [] } = api.column.getColumns.useQuery({
-    tableId,
-  });
-
-  // Load view configuration with table columns
+  // Load view configuration for table data fetching only
   const {
-    viewConfig,
-    error: viewError,
     activeFilters,
     activeSorts,
-    updateFilters: handleFilteringChange,
-    updateSorts: handleSortingChange,
-    updateHiddenColumns: setHiddenColumns,
-    showAllColumns,
-    hideAllColumns,
+    viewConfig,
+    error: viewError,
   } = useViewConfig({
     viewId,
-    columns: tableColumns,
+    tableId,
   });
 
   // Get filtered table data using view configuration
@@ -226,31 +216,18 @@ export default function TableViewPage({
       {/* Table Navigation */}
       <TableNav baseId={baseId} currentTableId={tableId} />
 
-      {/* View Controls */}
+      {/* View Controls - Much simpler now! */}
       <ViewControl
-        // Basic identifiers
         tableId={tableId}
         baseId={baseId}
         currentViewId={viewId}
-        // Data and state
         tableData={tableData ?? undefined}
         searchQuery={searchQuery}
-        sorting={activeSorts}
-        filtering={activeFilters}
-        hiddenColumns={hiddenColumns}
         loadingStatus={currentLoadingStatus}
         isViewSideOpen={isViewSideOpen}
-        // Search handlers
         setSearchQuery={handleSearchQueryChange}
         onSearchMatches={handleSearchMatches}
         onInvalidateTableData={handleInvalidateTableData}
-        // View configuration handlers
-        onSortingChange={handleSortingChange}
-        onFilteringChange={handleFilteringChange}
-        onSetHiddenColumns={setHiddenColumns}
-        onShowAllColumns={showAllColumns}
-        onHideAllColumns={hideAllColumns}
-        // UI interaction handlers
         onToggleViewSide={handleToggleViewSide}
         onSortHighlightChange={handleSortHighlightChange}
         onFilterHighlightChange={handleFilterHighlightChange}
