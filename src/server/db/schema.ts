@@ -45,7 +45,7 @@ export const bases = createTable(
   {
     id: uuid("id").primaryKey().defaultRandom().unique().notNull(),
     user_id: text("user_id")
-      .references(() => users.id, { onDelete: "cascade" })
+      .references(() => users.id)
       .notNull(),
     name: text("name").notNull(),
     color: text("color").notNull(),
@@ -62,7 +62,7 @@ export const tables = createTable(
   {
     id: uuid("id").primaryKey().defaultRandom().unique().notNull(),
     base_id: uuid("base_id")
-      .references(() => bases.id, { onDelete: "cascade" })
+      .references(() => bases.id)
       .notNull(),
     name: text("name").notNull(),
     ...timeStamps,
@@ -80,10 +80,10 @@ export const columns = createTable(
   {
     id: uuid("id").primaryKey().defaultRandom().unique().notNull(),
     base_id: uuid("base_id")
-      .references(() => bases.id, { onDelete: "cascade" })
+      .references(() => bases.id)
       .notNull(),
     table_id: uuid("table_id")
-      .references(() => tables.id, { onDelete: "cascade" })
+      .references(() => tables.id)
       .notNull(),
     name: text("name").notNull(),
     type: columnTypeEnum("type").notNull(),
@@ -106,10 +106,10 @@ export const rows = createTable(
   {
     id: uuid("id").primaryKey().defaultRandom().unique().notNull(),
     base_id: uuid("base_id")
-      .references(() => bases.id, { onDelete: "cascade" })
+      .references(() => bases.id)
       .notNull(),
     table_id: uuid("table_id")
-      .references(() => tables.id, { onDelete: "cascade" })
+      .references(() => tables.id)
       .notNull(),
     ...timeStamps,
   },
@@ -125,13 +125,13 @@ export const cells = createTable(
   "cells",
   {
     base_id: uuid("base_id")
-      .references(() => bases.id, { onDelete: "cascade" })
+      .references(() => bases.id)
       .notNull(),
     row_id: uuid("row_id")
-      .references(() => rows.id, { onDelete: "cascade" })
+      .references(() => rows.id)
       .notNull(),
     column_id: uuid("column_id")
-      .references(() => columns.id, { onDelete: "cascade" })
+      .references(() => columns.id)
       .notNull(),
     value_text: text("value_text"),
     value_number: doublePrecision("value_number"),
@@ -169,10 +169,10 @@ export const views = createTable(
   {
     id: uuid("id").primaryKey().defaultRandom().unique().notNull(),
     table_id: uuid("table_id")
-      .references(() => tables.id, { onDelete: "cascade" })
+      .references(() => tables.id)
       .notNull(),
     base_id: uuid("base_id")
-      .references(() => bases.id, { onDelete: "cascade" })
+      .references(() => bases.id)
       .notNull(),
     name: text("name").notNull(),
     filters: jsonb("filters").notNull().$type<FilterConfig[]>(),

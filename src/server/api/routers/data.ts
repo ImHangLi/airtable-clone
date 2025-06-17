@@ -124,12 +124,7 @@ export function buildFilterConditions(
     }
 
     if (subConditions.length > 0) {
-      // Combine with proper logical operators (respect UI order)
-      const combined = subConditions.reduce((acc, curr, idx) => {
-        if (idx === 0) return curr;
-        const op = positive[idx]?.logicalOperator?.toLowerCase() ?? "and";
-        return op === "or" ? sql`${acc} OR ${curr}` : sql`${acc} OR ${curr}`; // aggregation approach still uses OR in the inner query
-      });
+      const combined = subConditions.reduce((acc, curr) => sql`${acc} OR ${curr}`);
 
       const hasOr = positive.some((p) => p.logicalOperator === "or");
       if (hasOr || positive.length === 1) {
@@ -230,7 +225,7 @@ export const dataRouter = createTRPCRouter({
           };
         }
 
-        // Optimized query using SQL aggregation - searches entire base
+        // Optimized query using SQL aggregation
         const statsResult = await ctx.db
           .select({
             totalMatches: sql<number>`COUNT(*)`,
